@@ -1,0 +1,95 @@
+def plot_g(positions):
+    # client.simPause(True)
+    # Рисуем графики Отдельо создание figure и прочее. Чтобы была просто отправка и отрсиовка данных без
+    # именований на ходу(может лучше будет
+    # Продолжать с того же времени. Значит нудны две переменныхе. Одна для отчета. Друга 60*i, i++
+    # Нарисовать прямые. Коридор допустимых скоростей
+    fig, axes = plt.subplots(3, 1)
+    axes[0].plot(velocity[:, 0], velocity[:, 1])
+    axes[0].plot([0, 60], [min_velocity, min_velocity], c='Red', label='min_velocity')
+    axes[0].plot([0, 60], [max_velocity, max_velocity], c='Red', label='max_velocity')
+    axes[0].set_xlabel('t')
+    axes[0].set_ylabel('m/c')
+    axes[0].set_title('velocity')
+    axes[0].legend()
+    axes[1].plot(trottles[:, 0], trottles[:, 1])
+    axes[1].set_xlabel('t')
+    axes[1].set_ylabel('ye')
+    axes[1].set_title('throttle')
+    axes[2].plot(steerings[:, 0], steerings[:, 1])
+    axes[2].set_xlabel('t')
+    axes[2].set_ylabel('ye')
+    axes[2].set_title('steerings')
+    axes[2].legend()
+    plt.show()
+    fig, axes = plt.subplots(2, 1)
+    axes[0].plot(positions[:, 0], positions[:, 1])
+    axes[0].plot(np.linspace(0, 400, 100), SR.get_function()(np.linspace(0, 400, 100)), c='red', label="True")
+    axes[0].set_xlabel('x')
+    axes[0].set_ylabel('y')
+    axes[0].set_title('AgentPosition')
+    axes[1].plot(positions[:, 0], steerings[:, 1])
+    axes[1].legend()
+    axes[1].set_xlabel('x')
+    axes[1].set_ylabel('ye')
+    axes[1].set_title('steering')
+    axes[1].legend()
+    # plt.legend()
+    plt.show()
+
+
+
+
+
+"""
+        if False:
+            error_lenght,p =SR.distance_to_point(posAgent)
+            errors_lenght = np.append(errors_lenght,[error_lenght])
+            p = np.array([p[0],SR.get_function()(p)[0]])
+            print(f"posAgent{[posAgent]}")
+            print(f"p{p}")
+            sign = sign_steering(posAgent,p,SR.get_function())
+            print(f"error_lenght={error_lenght},sign={sign}")
+            print(f"error_lenght={error_lenght_prev}")
+            correction = sign*(kp*error_lenght + kd*((error_lenght - error_lenght_prev)/delta) + ki*np.sum(errors_lenght)*delta)
+            if np.abs(correction[0]) >=1:
+                correction = [np.sign(correction[0])]
+            steering =correction
+            print(f"correction{correction}")
+            print(f"steering{steering}")
+            car_controls.steering = steering[0]
+            error_lenght_prev = error_lenght
+            if errors_lenght.size>100:
+                errors_lenght = np.array([[error_lenght]])
+    steerings = np.append(steerings, [[time.time() - t0, car_controls.steering]], axis=0)
+    positions = np.append(positions,[[posAgent[0],posAgent[1]]],axis=0)
+    if False:
+        client.simContinueForTime(20)
+        plt.plot(linear_accel,"o",c='Red')
+        plt.show()
+        plt.plot(ang_accel,"o", c='Red')
+        plt.show()
+        plt.plot(np.sqrt(np.array(linear_accel)**2+np.array(ang_accel)**2),"-o", c='Red')
+        plt.show()
+        linear_accel = []
+        ang_accel = []
+    if time.time() - t0 > 10000000000000:
+        t0 = time.time()
+        client.simPause(True)
+        client.simPrintLogMessage("Pause")
+        plot_g(positions)
+        print(f"Прошло 60 секунд")
+        client.simPause(False)
+if is_curve_control:
+    error_lenght, p = SR.distance_to_point(posAgent)
+    errors_lenght = np.append(errors_lenght, [error_lenght])
+    p = np.array([p[0], SR.get_function()(p)[0]])
+    sign = sign_steering(posAgent, p, SR.get_function())
+    correction = sign * (kp * error_lenght + kd * ((error_lenght - error_lenght_prev) / delta) + ki * np.sum(
+        errors_lenght) * delta)
+    steering = sign * error_lenght[0]
+    car_controls.steering = kp * steering
+    error_lenght_prev = error_lenght
+    if errors_lenght.size > 100:
+        errors_lenght = np.array([[error_lenght]])
+""
