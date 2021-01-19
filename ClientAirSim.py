@@ -9,10 +9,13 @@ import CurveController as Controller
 from Driver import Driver
 import matplotlib.pyplot as plt
 from PIL import Image
-#import keyboard
+# import keyboard
 import os
+import tensorflow as  tf
 import warnings
+
 warnings.simplefilter("ignore", DeprecationWarning)
+
 
 # Генерация трассы
 def generate_track(return_function=False):
@@ -47,6 +50,7 @@ def SimMove(t, s, client, car_controls, delta):
     car_controls.steering = s
     client.setCarControls(car_controls)
     time.sleep(delta)
+
 
 # Управление с помощью PID Controller
 def sign_steering(posAgent, p, function, steering):
@@ -113,9 +117,22 @@ def A_curve(kP, kD, kI, client, errors_curve_i, PID_Curve):
 # generate_track()
 # Пути к файлам
 path_project = "D:/Users/user/PycharmProjects/Course/"
-path_model  = "D:/Users/user/PycharmProjects/Course/"
+path_model = "D:/Users/user/PycharmProjects/Course/"
 # Параметры симулятора
 delta = 0.01
+# Ограничим выделяемую память
+gpus = tf.config.experimental.list_physical_devices('GPU')
+if gpus:
+    # Restrict TensorFlow to only allocate 1GB of memory on the first GPU
+    try:
+        tf.config.experimental.set_virtual_device_configuration(
+            gpus[0],
+            [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=1024*6)])
+        logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+        print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+    except RuntimeError as e:
+        # Virtual devices must be set before GPUs have been initialized
+        print(e)
 # Driver
 SimpleCNN = Driver()
 SimpleCNN.model_CNN_init(path_model + "SimpleCNN")
@@ -126,7 +143,6 @@ client.confirmConnection()
 client.enableApiControl(True)
 # Могу ли я управлять машиной из кода?
 print(client.isApiControlEnabled())
-
 
 # PID регуляторы
 # Трасса
@@ -162,7 +178,6 @@ def get_sim_image(client):
 
     # reshape array to 4 channel image array H X W X 4
     img_rgb = img1d.reshape(responses[0].height, responses[0].width, 3)
-    print(img_rgb.shape)
     return img_rgb
 
 
@@ -174,12 +189,11 @@ def read_true_input(path_project, file_name):
 def move_on_true_input(true_input, client, car_controls, delta):
     # for по всему DF
     # keyboard.send("R")
-    for d,th, st in true_input.values:
+    for d, th, st in true_input.values:
         SimMove(th, st, client, car_controls, d)
     # Остановиться
     # keyboard.send("R")
     SimMove(0, 0, client, car_controls, delta)
-
 
 
 true_input = read_true_input(path_project, "true_input.csv")
@@ -194,10 +208,11 @@ while True:
     # posAgent, speedAgent, _ = CarState(client)
     # move_on_true_input(true_input, client, car_controls, 0.05)
     # get camera images from the car
-
+    start_time = time.time()
     steering = SimpleCNN.Control_CNN(get_sim_image(client))
+    print("- -- %s seconds ---" % (time.time() - start_time))
     # print(type(steering))
-    SimMove(1,int(steering),client,car_controls,0.01)
+    SimMove(1, int(steering), client, car_controls, 0.01)
     # get camera images from the car
     # airsim.write_file('py1.png', responses[0].image_data_float)
 """
