@@ -13,7 +13,7 @@ from PIL import Image
 import os
 import tensorflow as  tf
 import warnings
-
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 warnings.simplefilter("ignore", DeprecationWarning)
 
 
@@ -81,7 +81,7 @@ def A_velocity(kP, kD, kI, client, PID_Velocity):
     linear_accel = kinematics.linear_acceleration.get_length()
     _e_v_p = PID_Velocity.e_velocity_p(v, min_velocity, max_velocity)
     _e_v_d = PID_Velocity.e_velocity_d(linear_accel, v, min_velocity, max_velocity)
-    _e_v_i = PID_Velocity.e_velocity_i(v, min_velocity, max_velocity)
+    _e_v_i = PID_Velocity.e_velocity_i(v, min_velocity, max_velocity,0.01)
     # Установили параметры
     PID_Velocity.setControllerParams(kP, kD, kI)
     correction_v = PID_Velocity.PIDController(_e_v_p, _e_v_d, _e_v_i)
@@ -116,8 +116,8 @@ def A_curve(kP, kD, kI, client, errors_curve_i, PID_Curve):
 #  а UE4 использовать только для демонтрации проекта
 # generate_track()
 # Пути к файлам
-path_project = "D:/Users/user/PycharmProjects/Course/"
-path_model = "D:/Users/user/PycharmProjects/Course/"
+path_project = ROOT_DIR #"D:/Users/user/PycharmProjects/Course/"
+path_model = ROOT_DIR   # "D:/Users/user/PycharmProjects/Course/"
 # Параметры симулятора
 delta = 0.01
 # Ограничим выделяемую память
@@ -162,7 +162,7 @@ min_velocity = 10
 v0 = 0
 e0_velocity = min_velocity
 error_velocity_i_0 = e0_velocity
-is_velocity_control = False
+is_velocity_control = True
 PID_Velocity = Controller.VelocityControl(e0_velocity, v0, error_velocity_i_0)
 
 # Для SimMove
@@ -200,19 +200,25 @@ true_input = read_true_input(path_project, "true_input.csv")
 # SimMove(1, 0, client, delta)
 time.sleep(1)
 # keyboard.send("R")
+start_data = pd.read_csv("start_data.csv")
+position = airsim.Vector3r(start_data.X[0], start_data.Y[0]/100, 0)
+heading = airsim.utils.to_quaternion(0,0,0)
+pose = airsim.Pose(position, heading)
+client.simSetVehiclePose(pose, True)
+SimMove(1,0,client,car_controls,0.01)
 # TODO  Полность почистить код и заново снять эталонные данные
 while True:
-    # time.sleep(1)
-    # SimMove(1, 0, client, car_controls, delta)
+    # SimMove(0.5, 0, client, car_controls, delta)
     # print(kp_velocity, kd_velocity, ki_velocity)
     # posAgent, speedAgent, _ = CarState(client)
     # move_on_true_input(true_input, client, car_controls, 0.05)
     # get camera images from the car
     start_time = time.time()
+    if is_velocity_control == True:
+        _, throtle, _ = A_velocity(0.1,1,0,client,PID_Velocity)
     steering = SimpleCNN.Control_CNN(get_sim_image(client))
     print("- -- %s seconds ---" % (time.time() - start_time))
-    # print(type(steering))
-    SimMove(1, int(steering), client, car_controls, 0.01)
+    SimMove(throtle, int(steering), client, car_controls, 0.01)
     # get camera images from the car
     # airsim.write_file('py1.png', responses[0].image_data_float)
 """
