@@ -22,7 +22,7 @@ class LidarTest:
         self.path = None
         self.path_data = None
         self.is_start_recording = False
-        self.lidar_record = []
+        self.data_file = None
 
     def record(self):
         assert self.is_start_recording == True, "The recording didn't start"
@@ -34,9 +34,7 @@ class LidarTest:
             # print("\t\tlidar position: %s" % (pprint.pformat(lidarData.pose.position)))
             # print("\t\tlidar orientation: %s" % (pprint.pformat(lidarData.pose.orientation)))
             points = self.parse_lidarData(lidarData)
-            self.lidar_record.append([lidarData.time_stamp,lidarData.pose.position.x_val,
-                                      lidarData.pose.position.y_val,
-                                      lidarData.pose.position.z_val])
+            self.write_to_file_sync(f"{lidarData.pose.position.x_val} {lidarData.pose.position.y_val} {lidarData.pose.position.z_val} {lidarData.time_stamp}\n")
             self.write_lidarData_to_disk(points,os.path.join(self.path_data,str(lidarData.time_stamp)))
 
     def start_recording(self):
@@ -49,11 +47,18 @@ class LidarTest:
         os.mkdir(self.path)
         self.path_data = os.path.join(self.path, "data")
         os.mkdir(self.path_data)
+        self.data_file = open(os.path.join(self.path,"lidar_record.txt"),'w')
+        # Заголовок
+        self.write_to_file_sync("X Y Z TimeStamp\n")
         self.is_start_recording = True
 
+    def write_to_file_sync(self,str):
+        self.data_file.write(str)
+        self.data_file.flush()
+        os.fsync(self.data_file.fileno())
+
     def stop_recording(self):
-        numpy.save(os.path.join(self.path,"lidar_record")
-                   ,numpy.array(self.lidar_record))
+        pass
 
     def parse_lidarData(self, data):
 

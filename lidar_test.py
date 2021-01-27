@@ -12,7 +12,5 @@ client.simSetVehiclePose(pose, True)
 lidarTest = lidar.LidarTest(client)
 client.simGetLidarSegmentation()
 lidarTest.start_recording()
-print(client.ping())
-while client.ping():
+while True:
     lidarTest.record()
-    lidarTest.stop_recording()
