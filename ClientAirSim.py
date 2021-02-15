@@ -7,13 +7,13 @@ import pandas as pd
 import SplineRoad as SR
 import CurveController as Controller
 from Driver import Driver
-import matplotlib.pyplot as plt
-from PIL import Image
+from record_data import lidar_car_data as lidar
 # import keyboard
 import os
 import tensorflow as  tf
 import warnings
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+DELTA_RECORDING = 0.05
 warnings.simplefilter("ignore", DeprecationWarning)
 
 
@@ -133,17 +133,20 @@ if gpus:
     except RuntimeError as e:
         # Virtual devices must be set before GPUs have been initialized
         print(e)
-# Driver
-SimpleCNN = Driver()
-SimpleCNN.model_CNN_init(path_model + "SimpleCNN")
-time.sleep(10)
+
+is_collect_data = True
 # connect to the AirSim simulator
 client = airsim.CarClient()
 client.confirmConnection()
 client.enableApiControl(True)
+is_simple_CNN_driver = False
 # Могу ли я управлять машиной из кода?
 print(client.isApiControlEnabled())
-
+# Driver
+if is_simple_CNN_driver:
+    SimpleCNN = Driver()
+    SimpleCNN.model_CNN_init(path_model + "\SimpleCNN")
+    time.sleep(2)
 # PID регуляторы
 # Трасса
 kp_curve = 0
@@ -168,6 +171,12 @@ PID_Velocity = Controller.VelocityControl(e0_velocity, v0, error_velocity_i_0)
 # Для SimMove
 car_controls = client.getCarControls("PhysXCar")
 
+# Lidar
+
+lidarTest = lidar.LidarTest(client)
+client.simGetLidarSegmentation()
+lidarTest.start_recording()
+
 
 # Получить изображение с камеры. Возвращает numpy массив
 def get_sim_image(client):
@@ -180,12 +189,12 @@ def get_sim_image(client):
     img_rgb = img1d.reshape(responses[0].height, responses[0].width, 3)
     return img_rgb
 
-
+# Не актуально
 # Проехать по уже известным steering и throttle
 def read_true_input(path_project, file_name):
     return pd.read_csv(path_project + file_name)
 
-
+# Не актуально
 def move_on_true_input(true_input, client, car_controls, delta):
     # for по всему DF
     # keyboard.send("R")
@@ -196,7 +205,7 @@ def move_on_true_input(true_input, client, car_controls, delta):
     SimMove(0, 0, client, car_controls, delta)
 
 
-true_input = read_true_input(path_project, "true_input.csv")
+# true_input = read_true_input(path_project, "true_input.csv")
 # SimMove(1, 0, client, delta)
 time.sleep(1)
 # keyboard.send("R")
@@ -207,29 +216,32 @@ pose = airsim.Pose(position, heading)
 client.simSetVehiclePose(pose, True)
 SimMove(1,0,client,car_controls,0.01)
 # TODO  Полность почистить код и заново снять эталонные данные
+if is_collect_data:
+    print("collect_data")
+    time.sleep(2)
+client.startRecording()
 while True:
     # SimMove(0.5, 0, client, car_controls, delta)
     # print(kp_velocity, kd_velocity, ki_velocity)
     # posAgent, speedAgent, _ = CarState(client)
     # move_on_true_input(true_input, client, car_controls, 0.05)
     # get camera images from the car
-    start_time = time.time()
-    if is_velocity_control == True:
-        _, throtle, _ = A_velocity(0.1,1,0,client,PID_Velocity)
-    steering = SimpleCNN.Control_CNN(get_sim_image(client))
-    print("- -- %s seconds ---" % (time.time() - start_time))
-    SimMove(throtle, int(steering), client, car_controls, 0.01)
+    # Сбор данных
+    if is_collect_data:
+        # Сбор данных с камеры
+        if client.isRecording():
+            get_sim_image(client)
+            lidarTest.record()
+            # time.sleep(DELTA_RECORDING)
+    if is_simple_CNN_driver:
+        start_time = time.time()
+        if is_velocity_control == True:
+            _, throtle, _ = A_velocity(0.1,1,0,client,PID_Velocity)
+        steering = SimpleCNN.Control_CNN(get_sim_image(client))
+        print("- -- %s seconds ---" % (time.time() - start_time))
+        SimMove(throtle, int(steering), client, car_controls, 0.01)
+
+
+
     # get camera images from the car
     # airsim.write_file('py1.png', responses[0].image_data_float)
-"""
-    if client.simGetCollisionInfo().has_collided:
-        reset_environment(client)
-        SimMove(0.5, 0.001, client, delta)
-    if is_velocity_control:
-        _, t, s = A_velocity(0.1, 1, 1, client, PID_Velocity)
-
-        SimMove(t, s, client, delta)
-    if is_curve_control:
-        _, t, s = A_curve(0.0003, 0.0002, 0.1, client, erros_curve_i, PID_Curve)
-        SimMove(t, s, client, delta)
-"""

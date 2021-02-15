@@ -16,7 +16,7 @@ class LidarTest:
 
     def __init__(self,client):
 
-        self.ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+        self.ROOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),"lidar_record")
         # connect to the AirSim simulator
         self.client = client
         self.path = None
@@ -26,6 +26,8 @@ class LidarTest:
 
     def record(self):
         assert self.is_start_recording == True, "The recording didn't start"
+        time_stamp_s, time_stamp_ns = str(time.time()).split('.')
+        time_stamp = time_stamp_s + time_stamp_ns + "00"
         lidarData = self.client.getLidarData()
         if (len(lidarData.point_cloud) < 3):
             print("\tNo points received from Lidar data")
@@ -34,14 +36,14 @@ class LidarTest:
             # print("\t\tlidar position: %s" % (pprint.pformat(lidarData.pose.position)))
             # print("\t\tlidar orientation: %s" % (pprint.pformat(lidarData.pose.orientation)))
             points = self.parse_lidarData(lidarData)
-            self.write_to_file_sync(f"{lidarData.pose.position.x_val} {lidarData.pose.position.y_val} {lidarData.pose.position.z_val} {lidarData.time_stamp}\n")
-            self.write_lidarData_to_disk(points,os.path.join(self.path_data,str(lidarData.time_stamp)))
+            # self.write_to_file_sync(f"{lidarData.pose.position.x_val} {lidarData.pose.position.y_val} {lidarData.pose.position.z_val} {lidarData.time_stamp}\n")
+            self.write_lidarData_to_disk(points,os.path.join(self.path_data,str(time_stamp)))
 
     def start_recording(self):
         # Создать папку дата.время
         # Сохранять там файлы .npy в формате time_stamp
         # print(ROOT_DIR)
-        date = datetime.datetime.now().__format__("%Y-%d-%H-%M-%S")
+        date = datetime.datetime.now().__format__("%Y-%d-%m-%H-%M-%S")
         # print(os.mkdir(os.path.join(ROOT_DIR, date)))
         self.path = os.path.join(self.ROOT_DIR, date)
         os.mkdir(self.path)
@@ -81,4 +83,8 @@ class LidarTest:
 
         self.client.enableApiControl(False)
         print("Done!\n")
+
+
+class LidarDataProccesing:
+    pass
 
