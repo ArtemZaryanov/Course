@@ -80,11 +80,17 @@ class SplineRoad:
         self.rcx = np.concatenate([cLxi, lx, lx, cRxi])
         self.rcy = np.concatenate([cLyi, lUyi, lDyi, cRyi])
 
-        start_point = np.array([self.transform_x(0),self.transform_y (1 + 0.75) / 2])
+        start_point = np.array([self.transform_x(0),self.transform_y (1 + cLyi[-1]) / 2])
         start_direct = 0
         start_data = pd.DataFrame(
             {'X': [start_point[0]],'Y': [start_point[1]], "direct":[start_direct]})
-        start_data.to_csv("start_data.csv")
+        if os.path.exists("start_data.csv"):
+            print("exist")
+            os.remove("start_data.csv")
+            start_data.to_csv("start_data.csv")
+        else:
+            start_data.to_csv("start_data.csv")
+
         self.is_generated_data = True
         if output:
             return np.array([[self.lcx, self.lcy], [self.rcx, self.rcy]]), np.array(

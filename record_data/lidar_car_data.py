@@ -14,9 +14,9 @@ import numpy
 # Makes the drone fly and get Lidar data
 class LidarTest:
 
-    def __init__(self,client):
+    def __init__(self, client):
 
-        self.ROOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),"lidar_record")
+        self.ROOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lidar_record")
         # connect to the AirSim simulator
         self.client = client
         self.path = None
@@ -25,6 +25,7 @@ class LidarTest:
         self.data_file = None
 
     def record(self):
+
         assert self.is_start_recording == True, "The recording didn't start"
         time_stamp_s, time_stamp_ns = str(time.time()).split('.')
         time_stamp = time_stamp_s + time_stamp_ns + "00"
@@ -36,8 +37,17 @@ class LidarTest:
             # print("\t\tlidar position: %s" % (pprint.pformat(lidarData.pose.position)))
             # print("\t\tlidar orientation: %s" % (pprint.pformat(lidarData.pose.orientation)))
             points = self.parse_lidarData(lidarData)
-            # self.write_to_file_sync(f"{lidarData.pose.position.x_val} {lidarData.pose.position.y_val} {lidarData.pose.position.z_val} {lidarData.time_stamp}\n")
-            self.write_lidarData_to_disk(points,os.path.join(self.path_data,str(time_stamp)))
+            p, y, r = airsim.to_eularian_angles(self.client.getImuData().orientation)
+            self.write_to_file_sync(f"{p} {y} {r} {-1}\n")
+            self.write_lidarData_to_disk(points, os.path.join(self.path_data, str(time_stamp)))
+
+    def get_lidar_data(self):
+        time_stamp_s, time_stamp_ns = str(time.time()).split('.')
+        time_stamp = time_stamp_s + time_stamp_ns + "00"
+        lidarData = self.client.getLidarData()
+        points = self.parse_lidarData(lidarData)
+
+        return time_stamp, points
 
     def start_recording(self):
         # Создать папку дата.время
@@ -49,12 +59,12 @@ class LidarTest:
         os.mkdir(self.path)
         self.path_data = os.path.join(self.path, "data")
         os.mkdir(self.path_data)
-        self.data_file = open(os.path.join(self.path,"lidar_record.txt"),'w')
+        self.data_file = open(os.path.join(self.path, "lidar_record.txt"), 'w')
         # Заголовок
         self.write_to_file_sync("X Y Z TimeStamp\n")
         self.is_start_recording = True
 
-    def write_to_file_sync(self,str):
+    def write_to_file_sync(self, str):
         self.data_file.write(str)
         self.data_file.flush()
         os.fsync(self.data_file.fileno())
@@ -70,10 +80,10 @@ class LidarTest:
 
         return points
 
-    def write_lidarData_to_disk(self, points,name="point"):
-        numpy.save(name,points)
+    def write_lidarData_to_disk(self, points, name="point"):
+        numpy.save(name, points)
         # TODO
-        #print("not yet implemented")
+        # print("not yet implemented")
 
     def stop(self):
 
@@ -87,4 +97,3 @@ class LidarTest:
 
 class LidarDataProccesing:
     pass
-

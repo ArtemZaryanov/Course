@@ -7,6 +7,7 @@ import pandas as pd
 import SplineRoad as SR
 import CurveController as Controller
 from Driver import Driver
+from Driver import SimpleDriver
 from record_data import lidar_car_data as lidar
 # import keyboard
 import os
@@ -134,12 +135,13 @@ if gpus:
         # Virtual devices must be set before GPUs have been initialized
         print(e)
 
-is_collect_data = True
+is_collect_data = False
 # connect to the AirSim simulator
 client = airsim.CarClient()
 client.confirmConnection()
 client.enableApiControl(True)
 is_simple_CNN_driver = False
+is_simple_driver = True
 # Могу ли я управлять машиной из кода?
 print(client.isApiControlEnabled())
 # Driver
@@ -147,6 +149,16 @@ if is_simple_CNN_driver:
     SimpleCNN = Driver()
     SimpleCNN.model_CNN_init(path_model + "\SimpleCNN")
     time.sleep(2)
+
+if is_simple_driver:
+    X = [880, 380, 380, 880]
+    Y = [-80, -10, 10, 100]
+    x = [894, 916, 1000, 1039]
+    y = [622, 866, 895, 621]
+    control_points = (X, Y, x, y)
+    simpleDriver = SimpleDriver()
+    simpleDriver.model_init(control_points)
+
 # PID регуляторы
 # Трасса
 kp_curve = 0
@@ -240,7 +252,16 @@ while True:
         steering = SimpleCNN.Control_CNN(get_sim_image(client))
         print("- -- %s seconds ---" % (time.time() - start_time))
         SimMove(throtle, int(steering), client, car_controls, 0.01)
+    if is_simple_driver:
+        start_time = time.time()
 
+        time_stamp_lidar_data, lidar_data = lidarTest.get_lidar_data()
+        # time_stamp_camera_data, \
+        image = get_sim_image(client)
+
+        steering = simpleDriver.Control_Simple(image,lidarTest.get_lidar_data())
+        print("- -- %s seconds ---" % (time.time() - start_time))
+        SimMove(throtle, int(steering), client, car_controls, 0.01)
 
 
     # get camera images from the car

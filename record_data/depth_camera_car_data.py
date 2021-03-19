@@ -13,10 +13,10 @@ import numpy
 
 
 # Makes the drone fly and get Lidar data
-class CameraRecord:
+class DepthVisRecord:
 
     def __init__(self,client):
-        self.ROOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),"image_record")
+        self.ROOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),"depth_vis_record")
         # connect to the AirSim simulator
         self.client = client
         self.path = None
@@ -26,24 +26,31 @@ class CameraRecord:
 
     def record(self):
         assert self.is_start_recording == True, "The recording didn't start"
-        image = self.get_sim_image()
+        image = self.getScreenDepthVis()
         time_stamp_s, time_stamp_ns = str(time.time()).split('.')
         time_stamp = time_stamp_s + time_stamp_ns + "00"
         # self.write_to_file_sync(f"{lidarData.pose.position.x_val} {lidarData.pose.position.y_val} {lidarData.pose.position.z_val} {lidarData.time_stamp}\n")
         self.write_CameraImage_to_disk(image,os.path.join(self.path_data,time_stamp))
 
-    def get_sim_image(self):
-        time_stamp_s, time_stamp_ns = str(time.time()).split('.')
-        time_stamp = time_stamp_s + time_stamp_ns + "00"
-        responses = self.client.simGetImages([
-            airsim.ImageRequest(0, airsim.ImageType.Segmentation, False, False)])
-        # print("Type %d, size %d" % (responses[0].image_type, len(responses[0].image_data_uint8)))
-        img1d = numpy.fromstring(responses[0].image_data_uint8, dtype=numpy.uint8)
+    def getScreenDepthVis(self):
+        responses = self.client.simGetImages([airsim.ImageRequest(0, airsim.ImageType.DepthPerspective, True, False)])
+        img1d = numpy.array(responses[0].image_data_float, dtype=numpy.float)
+        img1d = 255 / numpy.maximum(numpy.ones(img1d.size), img1d)
+        img2d = numpy.reshape(img1d, (responses[0].height, responses[0].width))
 
-        # reshape array to 4 channel image array H X W X 4
-        img_rgb = img1d.reshape(responses[0].height, responses[0].width, 3)
-        return time_stamp, img_rgb
+        image = numpy.invert(numpy.array(Image.fromarray(img2d.astype(numpy.uint8), mode='L')))
 
+        factor = 10
+        maxIntensity = 255.0  # depends on dtype of image data
+
+        # Decrease intensity such that dark pixels become much darker, bright pixels become slightly dark
+        newImage1 = (maxIntensity) * (image / maxIntensity) ** factor
+        newImage1 = numpy.array(newImage1, dtype=numpy.uint8)
+
+        # cv2.imshow("Test", newImage1)
+        # cv2.waitKey(0)
+
+        return newImage1
     def start_recording(self):
         # Создать папку дата.время
         # Сохранять там файлы .npy в формате time_stamp
