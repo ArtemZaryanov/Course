@@ -4,14 +4,16 @@ import time
 import airsim.utils
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 import SplineRoad as SR
 import CurveController as Controller
+import cv2
 from Driver import Driver
 from Driver import SimpleDriver
 from record_data import lidar_car_data as lidar
 # import keyboard
 import os
-import tensorflow as  tf
+# import tensorflow as  tf
 import warnings
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 DELTA_RECORDING = 0.05
@@ -122,18 +124,6 @@ path_model = ROOT_DIR   # "D:/Users/user/PycharmProjects/Course/"
 # Параметры симулятора
 delta = 0.01
 # Ограничим выделяемую память
-gpus = tf.config.experimental.list_physical_devices('GPU')
-if gpus:
-    # Restrict TensorFlow to only allocate 1GB of memory on the first GPU
-    try:
-        tf.config.experimental.set_virtual_device_configuration(
-            gpus[0],
-            [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=1024*6)])
-        logical_gpus = tf.config.experimental.list_logical_devices('GPU')
-        print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
-    except RuntimeError as e:
-        # Virtual devices must be set before GPUs have been initialized
-        print(e)
 
 is_collect_data = False
 # connect to the AirSim simulator
@@ -146,6 +136,19 @@ is_simple_driver = True
 print(client.isApiControlEnabled())
 # Driver
 if is_simple_CNN_driver:
+    gpus = tf.config.experimental.list_physical_devices('GPU')
+    if gpus:
+        # Restrict TensorFlow to only allocate 1GB of memory on the first GPU
+        try:
+            tf.config.experimental.set_virtual_device_configuration(
+                gpus[0],
+                [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=1024 * 6)])
+            logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+            print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+        except RuntimeError as e:
+            # Virtual devices must be set before GPUs have been initialized
+            print(e)
+
     SimpleCNN = Driver()
     SimpleCNN.model_CNN_init(path_model + "\SimpleCNN")
     time.sleep(2)
@@ -214,7 +217,7 @@ def move_on_true_input(true_input, client, car_controls, delta):
         SimMove(th, st, client, car_controls, d)
     # Остановиться
     # keyboard.send("R")
-    SimMove(0, 0, client, car_controls, delta)
+    SimMove(0.5, 0, client, car_controls, delta)
 
 
 # true_input = read_true_input(path_project, "true_input.csv")
@@ -226,12 +229,12 @@ position = airsim.Vector3r(start_data.X[0], start_data.Y[0]/100, 0)
 heading = airsim.utils.to_quaternion(0,0,0)
 pose = airsim.Pose(position, heading)
 client.simSetVehiclePose(pose, True)
-SimMove(1,0,client,car_controls,0.01)
+SimMove(0,0,client,car_controls,0.01)
 # TODO  Полность почистить код и заново снять эталонные данные
 if is_collect_data:
     print("collect_data")
     time.sleep(2)
-client.startRecording()
+# client.startRecording()
 while True:
     # SimMove(0.5, 0, client, car_controls, delta)
     # print(kp_velocity, kd_velocity, ki_velocity)
@@ -245,6 +248,7 @@ while True:
             get_sim_image(client)
             lidarTest.record()
             # time.sleep(DELTA_RECORDING)
+
     if is_simple_CNN_driver:
         start_time = time.time()
         if is_velocity_control == True:
@@ -252,15 +256,22 @@ while True:
         steering = SimpleCNN.Control_CNN(get_sim_image(client))
         print("- -- %s seconds ---" % (time.time() - start_time))
         SimMove(throtle, int(steering), client, car_controls, 0.01)
+
     if is_simple_driver:
         start_time = time.time()
 
         time_stamp_lidar_data, lidar_data = lidarTest.get_lidar_data()
         # time_stamp_camera_data, \
         image = get_sim_image(client)
-
-        steering = simpleDriver.Control_Simple(image,lidarTest.get_lidar_data())
+        #plt.imshow(image)
+        # plt.show()
+        image_norm = cv2.normalize(image,None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+        img = (image_norm * 255).astype(np.uint8)
+        # Для котнтроля опорных цветов
+        # print(np.unique(img.reshape(-1, img.shape[2]), axis=0, return_counts=True))
+        steering = simpleDriver.Control_Simple(img,lidarTest.get_lidar_data()[1].T)
         print("- -- %s seconds ---" % (time.time() - start_time))
+        throtle = 1
         SimMove(throtle, int(steering), client, car_controls, 0.01)
 
 

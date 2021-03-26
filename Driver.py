@@ -45,7 +45,7 @@ class SimpleDriver:
 
     def Control_Simple(self, image: np.ndarray, lidar_data):
         # Разделили на картинке левые и правые конусы(они отличаются по цвету)
-        img_HSV = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        img_HSV = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
         img_tresh_low, img_tresh_high = self.cameraDataProccesing.color_clustering(img_HSV)
         # Получаем прямоугольники, ограничивающие контуры
         cntr_ps_low, bounding_rects_low, cones_low = self.cameraDataProccesing.get_bounding_rect(img_tresh_low, False)
@@ -66,10 +66,12 @@ class SimpleDriver:
         cntr_ps = np.array(cntr_ps)
 
         # Используя опорные цвета сегментации AirSim  ставим метки. Нужны для SVM
-        labels = self.cameraDataProccesing.get_label(cv2.cvtColor(image, cv2.COLOR_BGR2RGB), cntr_ps)
+        # Нужно подавать RGB изображение
+        labels = self.cameraDataProccesing.get_label(image, cntr_ps)
 
         # lidar_data_proccesing
         # lidar_data_proccesing.plot_disntane_function(lidar_data[index])
+        print(np.array(lidar_data).shape)
         cone_center, dist = self.lidar_data_proccesing.get_cone_info(lidar_data)
         approx_cone_center = self.lidar_data_proccesing.approx_data(cone_center)
         # lidar_data_proccesing.visulation_cone(approx_cone_center)

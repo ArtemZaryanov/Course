@@ -275,14 +275,14 @@ class CameraDataProccesing:
         return cntr_ps,bounding_rects,cones
     
     
-    def get_label(self,img_res,cntr_ps):
+    def get_label(self,img_res_rgb,cntr_ps):
         # Получение меток для SVM, используя инофрмацию о цвете
         labels = []
         for cntr_p in cntr_ps:
             y,x = cntr_p
-            if np.array_equal(img_res[x-4,y],self.left_cone_color_RGB):
+            if np.array_equal(img_res_rgb[x-4,y],self.left_cone_color_RGB):
                 labels.append(0)
-            if np.array_equal(img_res[x-4,y],self.right_cone_color_RGB):
+            if np.array_equal(img_res_rgb[x-4,y],self.right_cone_color_RGB):
                 labels.append(1)
         if not labels:
             print("Не найдены метки!!!!")
