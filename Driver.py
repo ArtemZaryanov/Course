@@ -40,9 +40,17 @@ class SimpleDriver:
         self.pinholeCamera = None
         self.cameraDataProccesing = None
         self.lidar_data_proccesing = None
+        self.cone_center = None
+        self.objective_func = None
+        self.FOV_r = None
+        self.DOV = None
         self.is_init = False
         pass
+    def get_data(self):
+        return self.cone_center
 
+    def get_objective_func(self):
+        return self.objective_func
     def Control_Simple(self, image: np.ndarray, lidar_data):
         # Разделили на картинке левые и правые конусы(они отличаются по цвету)
         img_HSV = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
@@ -60,9 +68,16 @@ class SimpleDriver:
 
         cntr_ps = []
         for ind in ind_low:
-            cntr_ps.append((cntr_ps_low[ind]))
+            #contur1 = np.append(cones_low[ind], [cones_high[ind][0]], axis=0)
+            contur1 = cones_low[ind]
+            cntr_ps.append([contur1[:, :, 0].mean(), contur1[:, :, 1].mean()])
+            #cntr_ps.append((cntr_ps_low[ind]))
         for ind in ind_high:
-            cntr_ps.append((cntr_ps_high[ind]))
+            #contur1 = np.append(cones_high[ind], cones_high[ind][0], axis=0)
+            contur1 = cones_high[ind]
+            cntr_ps.append([contur1[:, :, 0].mean(), contur1[:, :, 1].mean()])
+            #cntr_ps.append((cntr_ps_high[ind]))
+
         cntr_ps = np.array(cntr_ps)
 
         # Используя опорные цвета сегментации AirSim  ставим метки. Нужны для SVM
@@ -74,6 +89,7 @@ class SimpleDriver:
         print(np.array(lidar_data).shape)
         cone_center, dist = self.lidar_data_proccesing.get_cone_info(lidar_data)
         approx_cone_center = self.lidar_data_proccesing.approx_data(cone_center)
+        self.cone_center = approx_cone_center
         # lidar_data_proccesing.visulation_cone(approx_cone_center)
 
         # PinholeCamera
@@ -86,8 +102,8 @@ class SimpleDriver:
             space_cooord.append(coord)
 
         # SVM
-        X_train = space_cooord
         Y_train = labels
+        X_train = space_cooord[0:len(Y_train)]
         X_test = approx_cone_center
 
         from sklearn import svm
@@ -106,21 +122,32 @@ class SimpleDriver:
 
         # Находим оптимальный угол поворота
         from scipy.optimize import minimize
+        # TODO построить график
+        # Веткоризовать
+        def objective(pnts, r):
+            # v = 0
+            #for pnt in pnts:
+            #    v = v + ((pnt[0] ** 2 + (pnt[1] - r) ** 2) ** (1 / 2) - r) ** 2
+            #return -v
+            return -np.sum((pnts[:,0]**2  - ((pnts[:,1]-r)**2)**(1/2) - r)**2)
+        # № Диапозон указать
+        # TODO  две задачи оптимизации при +-r у одноо полоиждтельный и другой отрицательй (уже не надо скоорее  всего)
+        # TODO  Не учитвать те которые не в угле обзоре
+        # График
+        print(approx_cone_center.shape)
+        f = lambda r: objective(approx_cone_center, r)
+        self.objective_func = f
+        result = minimize(f, [0], method='nelder-mead')
+        s = np.arctan(1/(result.x))
+        print(f"Оптимальный радиус поворота {result.x}")
+        print(f"Оптимальный угол поворота в AirSim {s}")
+        return s
 
-        def objective(Nt, pnts, r):
-            v = 0
-            for pnt in pnts:
-                v = v + ((pnt[0] ** 2 + (pnt[1] - r) ** 2) ** (1 / 2) - r) ** 2
-            return v
-
-        f = lambda r: objective(approx_cone_center.shape[0], approx_cone_center, r)
-        result = minimize(f, 0, method='nelder-mead')
-        phi = 1 / np.tan(result.x)
-        print(f"Оптимальный угол поворота {phi}")
-        return phi
-
-    def model_init(self, control_point):
+    def model_init(self, control_point,FOV_d = 120,DOV = 16 ):
         self.pinholeCamera = PinholeCamera(control_point)
         self.cameraDataProccesing = CameraDataProccesing(True, 0)
         self.lidar_data_proccesing = LidarDataProccesing(False)
+        self.FOV_r = np.radians(FOV_d)
+        self.DOV = DOV
         self.is_init = True
+

@@ -56,20 +56,20 @@ class SplineRoad:
                 [self.xxc, self.yyc])
 
 
-    def standard_track_generate_data(self,s = 0.2,output = True):
+    def standard_track_generate_data(self,s = 0.2, a = 1, output = True):
         # Полуокружности
         thetaR = np.linspace(0, np.pi, 3 * self.count_cone // 10)
-        cRx = np.sin(thetaR) + 1
+        cRx = np.sin(thetaR) + a
         cRy = np.cos(thetaR)
-        cRxi = (1 - s) * np.sin(thetaR) + 1
+        cRxi = (1 - s) * np.sin(thetaR) + a
         cRyi = (1 - s) * np.cos(thetaR)
         thetaL = np.linspace(np.pi, 2 * np.pi, 3 * self.count_cone // 10)
-        cLx = np.sin(thetaL) - 1
+        cLx = np.sin(thetaL) - a
         cLy = np.cos(thetaL)
-        cLxi = (1 - s) * np.sin(thetaL) - 1
+        cLxi = (1 - s) * np.sin(thetaL) - a
         cLyi = (1 - s) * np.cos(thetaL)
 
-        lx = np.linspace(-1, 1, self.count_cone // 5)
+        lx = np.linspace(-a, a, self.count_cone // 5)
         lUy = np.ones(lx.shape[0]) * cLy[-1]
         lUyi = np.ones(lx.shape[0]) * cLyi[-1]
         lDy = np.ones(lx.shape[0]) * cLy[0]

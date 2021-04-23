@@ -37,8 +37,9 @@ class LidarTest:
             # print("\t\tlidar position: %s" % (pprint.pformat(lidarData.pose.position)))
             # print("\t\tlidar orientation: %s" % (pprint.pformat(lidarData.pose.orientation)))
             points = self.parse_lidarData(lidarData)
-            p, y, r = airsim.to_eularian_angles(self.client.getImuData().orientation)
-            self.write_to_file_sync(f"{p} {y} {r} {-1}\n")
+            x, y, z = self.client.getLidarData().pose.position
+            pitch, yaw, roll = airsim.to_eularian_angles(self.client.getImuData().orientation)
+            self.write_to_file_sync(f"{x} {y} {z} {pitch} {yaw} {roll} {time_stamp}\n")
             self.write_lidarData_to_disk(points, os.path.join(self.path_data, str(time_stamp)))
 
     def get_lidar_data(self):
@@ -61,7 +62,7 @@ class LidarTest:
         os.mkdir(self.path_data)
         self.data_file = open(os.path.join(self.path, "lidar_record.txt"), 'w')
         # Заголовок
-        self.write_to_file_sync("X Y Z TimeStamp\n")
+        self.write_to_file_sync("X Y Z Roll Pitch Yaw TimeStamp\n")
         self.is_start_recording = True
 
     def write_to_file_sync(self, str):

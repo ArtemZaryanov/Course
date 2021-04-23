@@ -259,6 +259,7 @@ class CameraDataProccesing:
             cntr_p = (rect[0] + rect[2]//2 ,rect[1] + rect[3])
             cntr_ps.append(cntr_p)
         return cntr_ps
+    # TODO  Исправить на более точный метод, пока это самое уязвимое место
     def get_bounding_rect(self,img1,is_RGB=False):
         if is_RGB:
             img_HSV = self.convert_image_to_HSV(img1)
@@ -280,9 +281,12 @@ class CameraDataProccesing:
         labels = []
         for cntr_p in cntr_ps:
             y,x = cntr_p
-            if np.array_equal(img_res_rgb[x-4,y],self.left_cone_color_RGB):
+            x = int(x)
+            y = int(y)
+
+            if np.array_equal(img_res_rgb[x,y],self.left_cone_color_RGB):
                 labels.append(0)
-            if np.array_equal(img_res_rgb[x-4,y],self.right_cone_color_RGB):
+            if np.array_equal(img_res_rgb[x,y],self.right_cone_color_RGB):
                 labels.append(1)
         if not labels:
             print("Не найдены метки!!!!")

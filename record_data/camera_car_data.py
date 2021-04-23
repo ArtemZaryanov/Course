@@ -26,9 +26,9 @@ class CameraRecord:
 
     def record(self):
         assert self.is_start_recording == True, "The recording didn't start"
-        image = self.get_sim_image()
-        time_stamp_s, time_stamp_ns = str(time.time()).split('.')
-        time_stamp = time_stamp_s + time_stamp_ns + "00"
+        time_stamp, image = self.get_sim_image()
+        #time_stamp_s, time_stamp_ns = str(time.time()).split('.')
+        # time_stamp = time_stamp_s + time_stamp_ns + "00"
         # self.write_to_file_sync(f"{lidarData.pose.position.x_val} {lidarData.pose.position.y_val} {lidarData.pose.position.z_val} {lidarData.time_stamp}\n")
         self.write_CameraImage_to_disk(image,os.path.join(self.path_data,time_stamp))
 

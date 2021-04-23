@@ -5,8 +5,11 @@ import airsim.utils
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import SplineRoad as SR
-import CurveController as Controller
+import matplotlib.animation as animation
+
+# TODO переписать под SplineRoadNew. Далее SplineRoadNew->SplineRoad
+#import SplineRoad as SR
+# import CurveController as Controller
 import cv2
 from Driver import Driver
 from Driver import SimpleDriver
@@ -15,6 +18,7 @@ from record_data import lidar_car_data as lidar
 import os
 # import tensorflow as  tf
 import warnings
+
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 DELTA_RECORDING = 0.05
 warnings.simplefilter("ignore", DeprecationWarning)
@@ -28,7 +32,7 @@ def generate_track(return_function=False):
     if return_function:
         return SR.get_function(), None
     else:
-        return None
+         return None
 
 
 def CarState(client):
@@ -84,7 +88,7 @@ def A_velocity(kP, kD, kI, client, PID_Velocity):
     linear_accel = kinematics.linear_acceleration.get_length()
     _e_v_p = PID_Velocity.e_velocity_p(v, min_velocity, max_velocity)
     _e_v_d = PID_Velocity.e_velocity_d(linear_accel, v, min_velocity, max_velocity)
-    _e_v_i = PID_Velocity.e_velocity_i(v, min_velocity, max_velocity,0.01)
+    _e_v_i = PID_Velocity.e_velocity_i(v, min_velocity, max_velocity, 0.01)
     # Установили параметры
     PID_Velocity.setControllerParams(kP, kD, kI)
     correction_v = PID_Velocity.PIDController(_e_v_p, _e_v_d, _e_v_i)
@@ -119,19 +123,23 @@ def A_curve(kP, kD, kI, client, errors_curve_i, PID_Curve):
 #  а UE4 использовать только для демонтрации проекта
 # generate_track()
 # Пути к файлам
-path_project = ROOT_DIR #"D:/Users/user/PycharmProjects/Course/"
-path_model = ROOT_DIR   # "D:/Users/user/PycharmProjects/Course/"
+path_project = ROOT_DIR  # "D:/Users/user/PycharmProjects/Course/"
+path_model = ROOT_DIR  # "D:/Users/user/PycharmProjects/Course/"
 # Параметры симулятора
 delta = 0.01
 # Ограничим выделяемую память
 
-is_collect_data = False
+is_collect_data = True
 # connect to the AirSim simulator
 client = airsim.CarClient()
 client.confirmConnection()
-client.enableApiControl(True)
 is_simple_CNN_driver = False
-is_simple_driver = True
+is_simple_driver = False
+is_real_plot = False
+if is_simple_driver or is_simple_CNN_driver :
+    client.enableApiControl(True)
+else:
+    client.enableApiControl(False)
 # Могу ли я управлять машиной из кода?
 print(client.isApiControlEnabled())
 # Driver
@@ -169,7 +177,7 @@ kd_curve = 0
 ki_curve = 0
 erros_curve_i = []
 is_curve_control = False
-PID_Curve = Controller.CurveControl()
+# PID_Curve = Controller.CurveControl()
 # Скорость
 kp_velocity = 0
 kd_velocity = 0
@@ -181,7 +189,7 @@ v0 = 0
 e0_velocity = min_velocity
 error_velocity_i_0 = e0_velocity
 is_velocity_control = True
-PID_Velocity = Controller.VelocityControl(e0_velocity, v0, error_velocity_i_0)
+# PID_Velocity = Controller.VelocityControl(e0_velocity, v0, error_velocity_i_0)
 
 # Для SimMove
 car_controls = client.getCarControls("PhysXCar")
@@ -191,7 +199,6 @@ car_controls = client.getCarControls("PhysXCar")
 lidarTest = lidar.LidarTest(client)
 client.simGetLidarSegmentation()
 lidarTest.start_recording()
-
 
 # Получить изображение с камеры. Возвращает numpy массив
 def get_sim_image(client):
@@ -204,10 +211,12 @@ def get_sim_image(client):
     img_rgb = img1d.reshape(responses[0].height, responses[0].width, 3)
     return img_rgb
 
+
 # Не актуально
 # Проехать по уже известным steering и throttle
 def read_true_input(path_project, file_name):
     return pd.read_csv(path_project + file_name)
+
 
 # Не актуально
 def move_on_true_input(true_input, client, car_controls, delta):
@@ -225,17 +234,98 @@ def move_on_true_input(true_input, client, car_controls, delta):
 time.sleep(1)
 # keyboard.send("R")
 start_data = pd.read_csv("start_data.csv")
-position = airsim.Vector3r(start_data.X[0], start_data.Y[0]/100, 0)
-heading = airsim.utils.to_quaternion(0,0,0)
+position = airsim.Vector3r(start_data.X[0], start_data.Y[0] / 100, 0)
+heading = airsim.utils.to_quaternion(0, 0, 0)
 pose = airsim.Pose(position, heading)
 client.simSetVehiclePose(pose, True)
-SimMove(0,0,client,car_controls,0.01)
+SimMove(0, 0, client, car_controls, 0.01)
 # TODO  Полность почистить код и заново снять эталонные данные
 if is_collect_data:
     print("collect_data")
     time.sleep(2)
 # client.startRecording()
-while True:
+
+# real_plot
+# Create figure for plotting
+fig, ax = plt.subplots(2, 1)
+# ax = fig.add_subplot(1, 1, 1)
+xs = []  # store trials here (n)
+ys = []  # store relative frequency here
+rs = []  # for theoretical probability
+steerings = []
+throttles= []
+def animate(i, xs, ys, client):
+    throttle, steering = SimpleDrive(client)
+    # Aquire and parse data from serial port
+    vehiclePose = client.simGetVehiclePose()
+    position = vehiclePose.position
+    orientation = airsim.to_eularian_angles(vehiclePose.orientation)
+    # Add x and y to lists
+    xs.append(position.x_val)
+    ys.append(position.y_val)
+    steerings.append(steering)
+    throttles.append(throttle)
+    # rs.append(0.5)
+    # Limit x and y lists to 20 items
+    # xs = xs[-20:]
+    # ys = ys[-20:]
+    # Draw x and y lists
+    ax[0].clear()
+    ax[1].clear()
+    # ax.plot(xs, ys, label="Experimental Probability")
+    # ax.quiver
+    yaw = orientation[2]
+    new_x = np.cos(yaw)
+    new_y = np.sin(yaw)
+    # ax.quiver(position.x_val, position.y_val, new_x, new_y)
+    ff = simpleDriver.get_objective_func()
+    x = np.linspace(0,1000)
+    ax[0].plot(x,list(map(ff,x)))
+    # Steering
+    ax[1].plot(steerings)
+
+    # Для конусов
+    # cone_center  = simpleDriver.get_data()
+    # print(cone_center)
+    # ax.scatter(cone_center[:,0],cone_center[:,1])
+    # ax.plot(xs, rs, label="Theoretical Probability")
+    # ax.set_ylim([-40 , +40])
+    # ax.set_xlim([-40, +40])
+    # ax.set_ylim(np.min(ys) - np.std(ys),np.max(ys) + np.std(ys))
+    # ax.set_xlim(np.min(xs) - np.std(xs), np.max(xs) + np.std(xs))
+    # Format plot
+    # ax[0].xticks(rotation=45, ha='right')
+    #ax[0].subplots_adjust(bottom=0.30)
+    #ax[0].title('This is how I roll...')
+    #ax[0].ylabel('Relative frequency')
+    #plt.legend()
+    # plt.axis([1, None, 0, 1.1])  # Use for arbitrary number of trials
+    # plt.axis([1, 100, 0, 1.1]) #Use for 100 trial demo
+
+def SimpleDrive(client):
+    if not client.simIsPause():
+        start_time = time.time()
+
+        time_stamp_lidar_data, lidar_data = lidarTest.get_lidar_data()
+        # time_stamp_camera_data, \
+        image = get_sim_image(client)
+        # plt.imshow(image)
+        # plt.show()
+        image_norm = cv2.normalize(image, None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+        img = (image_norm * 255).astype(np.uint8)
+        # Для котнтроля опорных цветов
+        # print(np.unique(img.reshape(-1, img.shape[2]), axis=0, return_counts=True))
+        steering = simpleDriver.Control_Simple(img, lidarTest.get_lidar_data()[1].T)
+        print("- -- %s seconds ---" % (time.time() - start_time))
+        throtle = 0.5
+        SimMove(throtle, steering[0], client, car_controls, 0.1)
+        return throtle, steering[0],
+
+if is_real_plot:
+    ani = animation.FuncAnimation(fig, animate, fargs=(xs, ys, client), interval=10)
+    plt.show()
+while True and not is_real_plot:
+    print("is_real_plot")
     # SimMove(0.5, 0, client, car_controls, delta)
     # print(kp_velocity, kd_velocity, ki_velocity)
     # posAgent, speedAgent, _ = CarState(client)
@@ -252,27 +342,27 @@ while True:
     if is_simple_CNN_driver:
         start_time = time.time()
         if is_velocity_control == True:
-            _, throtle, _ = A_velocity(0.1,1,0,client,PID_Velocity)
+            _, throtle, _ = A_velocity(0.1, 1, 0, client, PID_Velocity)
         steering = SimpleCNN.Control_CNN(get_sim_image(client))
         print("- -- %s seconds ---" % (time.time() - start_time))
         SimMove(throtle, int(steering), client, car_controls, 0.01)
 
-    if is_simple_driver:
+    if is_simple_driver and not client.simIsPause():
         start_time = time.time()
 
         time_stamp_lidar_data, lidar_data = lidarTest.get_lidar_data()
         # time_stamp_camera_data, \
         image = get_sim_image(client)
-        #plt.imshow(image)
+        # plt.imshow(image)
         # plt.show()
-        image_norm = cv2.normalize(image,None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+        image_norm = cv2.normalize(image, None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
         img = (image_norm * 255).astype(np.uint8)
         # Для котнтроля опорных цветов
         # print(np.unique(img.reshape(-1, img.shape[2]), axis=0, return_counts=True))
-        steering = simpleDriver.Control_Simple(img,lidarTest.get_lidar_data()[1].T)
+        steering = simpleDriver.Control_Simple(img, lidarTest.get_lidar_data()[1].T)
         print("- -- %s seconds ---" % (time.time() - start_time))
-        throtle = 1
-        SimMove(throtle, int(steering), client, car_controls, 0.01)
+        throtle = 0.5
+        SimMove(throtle, -int(steering), client, car_controls, 0.1)
 
 
     # get camera images from the car

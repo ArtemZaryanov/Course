@@ -18,7 +18,7 @@
 
 # Если возникнут проблемы https://github.com/microsoft/AirSim/pull/2243
 import numpy as np
-import SplineRoad as SR
+import SplineRoadNew as SR
 from scipy.misc import derivative
 
 

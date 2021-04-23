@@ -15,7 +15,7 @@ start_data = pd.read_csv("../start_data.csv")
 position = airsim.Vector3r(start_data.X[0], start_data.Y[0] / 100, 0)
 heading = airsim.utils.to_quaternion(0, 0, 0)
 pose = airsim.Pose(position, heading)
-# client.simSetVehiclePose(pose, True)
+client.simSetVehiclePose(pose, True)
 
 # depth_vis
 

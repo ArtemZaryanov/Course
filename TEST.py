@@ -1,9 +1,5 @@
-import CurveController
-import SplineRoad
 import SplineRoadNew
 # from Driver import Driver
-import cv2
-import os
 # from tensorflow import keras
 # import tensorflow as tf
 # print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('GPU')))
@@ -19,7 +15,7 @@ delta = 0.01
 SR = SplineRoadNew.SplineRoad(count_cone=150)
 # SR.random_track_generate_data()
 # SR.epicycloid_track_generate_data()
-SR.standard_track_generate_data(0.07)
+SR.standard_track_generate_data(s= 0.07, a = 0)
 # SR.track_eight_generate_data()
 # SR.polar_function_generate_data()
 SR.plot_cones(plot_func=False)
