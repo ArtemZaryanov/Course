@@ -8,15 +8,16 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
 # TODO переписать под SplineRoadNew. Далее SplineRoadNew->SplineRoad
-#import SplineRoad as SR
-# import CurveController as Controller
+# import SplineRoad as SR
+import CurveController as Controller
 import cv2
-from Driver import Driver
+from Driver import DriverCNN
+from Driver import DriverPID
 from Driver import SimpleDriver
 from record_data import lidar_car_data as lidar
 # import keyboard
 import os
-# import tensorflow as  tf
+import tensorflow as  tf
 import warnings
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -32,7 +33,7 @@ def generate_track(return_function=False):
     if return_function:
         return SR.get_function(), None
     else:
-         return None
+        return None
 
 
 def CarState(client):
@@ -129,14 +130,15 @@ path_model = ROOT_DIR  # "D:/Users/user/PycharmProjects/Course/"
 delta = 0.01
 # Ограничим выделяемую память
 
-is_collect_data = True
+is_collect_data = False
 # connect to the AirSim simulator
 client = airsim.CarClient()
 client.confirmConnection()
 is_simple_CNN_driver = False
+is_PID_driver = False
 is_simple_driver = False
 is_real_plot = False
-if is_simple_driver or is_simple_CNN_driver :
+if is_simple_driver or is_simple_CNN_driver:
     client.enableApiControl(True)
 else:
     client.enableApiControl(False)
@@ -150,17 +152,20 @@ if is_simple_CNN_driver:
         try:
             tf.config.experimental.set_virtual_device_configuration(
                 gpus[0],
-                [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=1024 * 6)])
+                [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=1024 * 5)])
             logical_gpus = tf.config.experimental.list_logical_devices('GPU')
             print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
         except RuntimeError as e:
             # Virtual devices must be set before GPUs have been initialized
             print(e)
 
-    SimpleCNN = Driver()
+    SimpleCNN = DriverCNN()
     SimpleCNN.model_CNN_init(path_model + "\SimpleCNN")
     time.sleep(2)
-
+#TODO Поменять для отчета имена  SimplePID{CNN} для надежности
+if is_PID_driver:
+    SimplePID = DriverPID()
+    SimplePID.
 if is_simple_driver:
     X = [880, 380, 380, 880]
     Y = [-80, -10, 10, 100]
@@ -189,16 +194,17 @@ v0 = 0
 e0_velocity = min_velocity
 error_velocity_i_0 = e0_velocity
 is_velocity_control = True
-# PID_Velocity = Controller.VelocityControl(e0_velocity, v0, error_velocity_i_0)
+PID_Velocity = Controller.VelocityControl(e0_velocity, v0, error_velocity_i_0)
 
 # Для SimMove
 car_controls = client.getCarControls("PhysXCar")
 
 # Lidar
 
-lidarTest = lidar.LidarTest(client)
-client.simGetLidarSegmentation()
-lidarTest.start_recording()
+# lidarTest = lidar.LidarTest(client)
+# client.simGetLidarSegmentation()
+# lidarTest.start_recording()
+
 
 # Получить изображение с камеры. Возвращает numpy массив
 def get_sim_image(client):
@@ -234,11 +240,11 @@ def move_on_true_input(true_input, client, car_controls, delta):
 time.sleep(1)
 # keyboard.send("R")
 start_data = pd.read_csv("start_data.csv")
-position = airsim.Vector3r(start_data.X[0], start_data.Y[0] / 100, 0)
+position = airsim.Vector3r(start_data.X[0], start_data.Y[0] / 100, -1)
 heading = airsim.utils.to_quaternion(0, 0, 0)
 pose = airsim.Pose(position, heading)
 client.simSetVehiclePose(pose, True)
-SimMove(0, 0, client, car_controls, 0.01)
+SimMove(0.5, 0, client, car_controls, 1)
 # TODO  Полность почистить код и заново снять эталонные данные
 if is_collect_data:
     print("collect_data")
@@ -253,7 +259,9 @@ xs = []  # store trials here (n)
 ys = []  # store relative frequency here
 rs = []  # for theoretical probability
 steerings = []
-throttles= []
+throttles = []
+
+
 def animate(i, xs, ys, client):
     throttle, steering = SimpleDrive(client)
     # Aquire and parse data from serial port
@@ -279,8 +287,8 @@ def animate(i, xs, ys, client):
     new_y = np.sin(yaw)
     # ax.quiver(position.x_val, position.y_val, new_x, new_y)
     ff = simpleDriver.get_objective_func()
-    x = np.linspace(0,1000)
-    ax[0].plot(x,list(map(ff,x)))
+    x = np.linspace(0, 1000)
+    ax[0].plot(x, list(map(ff, x)))
     # Steering
     ax[1].plot(steerings)
 
@@ -295,12 +303,13 @@ def animate(i, xs, ys, client):
     # ax.set_xlim(np.min(xs) - np.std(xs), np.max(xs) + np.std(xs))
     # Format plot
     # ax[0].xticks(rotation=45, ha='right')
-    #ax[0].subplots_adjust(bottom=0.30)
-    #ax[0].title('This is how I roll...')
-    #ax[0].ylabel('Relative frequency')
-    #plt.legend()
+    # ax[0].subplots_adjust(bottom=0.30)
+    # ax[0].title('This is how I roll...')
+    # ax[0].ylabel('Relative frequency')
+    # plt.legend()
     # plt.axis([1, None, 0, 1.1])  # Use for arbitrary number of trials
     # plt.axis([1, 100, 0, 1.1]) #Use for 100 trial demo
+
 
 def SimpleDrive(client):
     if not client.simIsPause():
@@ -321,9 +330,21 @@ def SimpleDrive(client):
         SimMove(throtle, steering[0], client, car_controls, 0.1)
         return throtle, steering[0],
 
+
 if is_real_plot:
     ani = animation.FuncAnimation(fig, animate, fargs=(xs, ys, client), interval=10)
     plt.show()
+
+
+def write_to_file_sync(data_file,str):
+    data_file.write(str)
+    data_file.flush()
+    os.fsync(data_file.fileno())
+
+
+ping_CNN_file = open(f"ping_CNN.dat", 'w')
+ping_PID_file = open(f"ping_PID.dat", 'w')
+
 while True and not is_real_plot:
     print("is_real_plot")
     # SimMove(0.5, 0, client, car_controls, delta)
@@ -339,12 +360,24 @@ while True and not is_real_plot:
             lidarTest.record()
             # time.sleep(DELTA_RECORDING)
 
+    if is_PID_driver:
+        start_time = time.time()
+        if is_velocity_control:
+            _, throtle, _ = A_velocity(0.1, 1, 0, client, PID_Velocity)
+        steering = None#SimpleCNN.Control_CNN(get_sim_image(client))
+        ping = time.time() - start_time
+        ping_PID_file.write(f"{ping}\n")
+        SimMove(throtle, int(steering), client, car_controls, 0.01)
+
     if is_simple_CNN_driver:
         start_time = time.time()
-        if is_velocity_control == True:
+        if is_velocity_control:
             _, throtle, _ = A_velocity(0.1, 1, 0, client, PID_Velocity)
         steering = SimpleCNN.Control_CNN(get_sim_image(client))
-        print("- -- %s seconds ---" % (time.time() - start_time))
+        ping = time.time() - start_time
+        ping_CNN_file.write(f"{ping}\n")
+        # write_to_file_sync(ping_CNN_file,f"{ping}")
+        # print("- -- %s seconds ---" % ping)
         SimMove(throtle, int(steering), client, car_controls, 0.01)
 
     if is_simple_driver and not client.simIsPause():
@@ -363,7 +396,6 @@ while True and not is_real_plot:
         print("- -- %s seconds ---" % (time.time() - start_time))
         throtle = 0.5
         SimMove(throtle, -int(steering), client, car_controls, 0.1)
-
 
     # get camera images from the car
     # airsim.write_file('py1.png', responses[0].image_data_float)

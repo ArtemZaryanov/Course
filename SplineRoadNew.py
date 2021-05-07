@@ -90,7 +90,8 @@ class SplineRoad:
             start_data.to_csv("start_data.csv")
         else:
             start_data.to_csv("start_data.csv")
-
+        self.xxc = (self.lcx + self.rcx)/2
+        self.yyc = (self.lcy + self.rcy) / 2
         self.is_generated_data = True
         if output:
             return np.array([[self.lcx, self.lcy], [self.rcx, self.rcy]]), np.array(

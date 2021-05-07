@@ -24,19 +24,19 @@ class CameraRecord:
         self.is_start_recording = False
         self.data_file = None
 
-    def record(self):
+    def record(self,ImageType=5):
         assert self.is_start_recording == True, "The recording didn't start"
-        time_stamp, image = self.get_sim_image()
+        time_stamp, image = self.get_sim_image(ImageType)
         #time_stamp_s, time_stamp_ns = str(time.time()).split('.')
         # time_stamp = time_stamp_s + time_stamp_ns + "00"
         # self.write_to_file_sync(f"{lidarData.pose.position.x_val} {lidarData.pose.position.y_val} {lidarData.pose.position.z_val} {lidarData.time_stamp}\n")
         self.write_CameraImage_to_disk(image,os.path.join(self.path_data,time_stamp))
 
-    def get_sim_image(self):
+    def get_sim_image(self,ImageType=5):
         time_stamp_s, time_stamp_ns = str(time.time()).split('.')
         time_stamp = time_stamp_s + time_stamp_ns + "00"
         responses = self.client.simGetImages([
-            airsim.ImageRequest(0, airsim.ImageType.Segmentation, False, False)])
+            airsim.ImageRequest(0, ImageType, False, False)])
         # print("Type %d, size %d" % (responses[0].image_type, len(responses[0].image_data_uint8)))
         img1d = numpy.fromstring(responses[0].image_data_uint8, dtype=numpy.uint8)
 

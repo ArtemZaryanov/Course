@@ -2,17 +2,32 @@ from tensorflow import keras
 import tensorflow as tf
 import numpy as np
 import cv2
+import SplineRoadNew
 import os
 from CameraProcessing import CameraDataProccesing
 from CameraProcessing import LidarDataProccesing
 from CameraProcessing import PinholeCamera
 
-
 def getRandomNumber():
     return 4
 
+class TrackType:
+    Standart = 0
+    Epicycloid = 1
+    Eight = 2
+    Random = 3
+    PolarFunction = 4
+    SplevSpline = 5
+class DriverPID:
+    def __init__(self,type_trace):
+        track_function = None
+        track_points = None
+        SR = SplineRoadNew.SplineRoad(count_cone=150)
+        if type_trace == TrackType.Standart:
+            SR.standard_track_generate_data(s=0.07, a=0)
 
-class Driver:
+
+class DriverCNN:
 
     def __init__(self):
         self.model_CNN = None
@@ -46,11 +61,13 @@ class SimpleDriver:
         self.DOV = None
         self.is_init = False
         pass
+
     def get_data(self):
         return self.cone_center
 
     def get_objective_func(self):
         return self.objective_func
+
     def Control_Simple(self, image: np.ndarray, lidar_data):
         # Разделили на картинке левые и правые конусы(они отличаются по цвету)
         img_HSV = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
@@ -68,15 +85,15 @@ class SimpleDriver:
 
         cntr_ps = []
         for ind in ind_low:
-            #contur1 = np.append(cones_low[ind], [cones_high[ind][0]], axis=0)
+            # contur1 = np.append(cones_low[ind], [cones_high[ind][0]], axis=0)
             contur1 = cones_low[ind]
             cntr_ps.append([contur1[:, :, 0].mean(), contur1[:, :, 1].mean()])
-            #cntr_ps.append((cntr_ps_low[ind]))
+            # cntr_ps.append((cntr_ps_low[ind]))
         for ind in ind_high:
-            #contur1 = np.append(cones_high[ind], cones_high[ind][0], axis=0)
+            # contur1 = np.append(cones_high[ind], cones_high[ind][0], axis=0)
             contur1 = cones_high[ind]
             cntr_ps.append([contur1[:, :, 0].mean(), contur1[:, :, 1].mean()])
-            #cntr_ps.append((cntr_ps_high[ind]))
+            # cntr_ps.append((cntr_ps_high[ind]))
 
         cntr_ps = np.array(cntr_ps)
 
@@ -126,10 +143,11 @@ class SimpleDriver:
         # Веткоризовать
         def objective(pnts, r):
             # v = 0
-            #for pnt in pnts:
+            # for pnt in pnts:
             #    v = v + ((pnt[0] ** 2 + (pnt[1] - r) ** 2) ** (1 / 2) - r) ** 2
-            #return -v
-            return -np.sum((pnts[:,0]**2  - ((pnts[:,1]-r)**2)**(1/2) - r)**2)
+            # return -v
+            return -np.sum((pnts[:, 0] ** 2 - ((pnts[:, 1] - r) ** 2) ** (1 / 2) - r) ** 2)
+
         # № Диапозон указать
         # TODO  две задачи оптимизации при +-r у одноо полоиждтельный и другой отрицательй (уже не надо скоорее  всего)
         # TODO  Не учитвать те которые не в угле обзоре
@@ -138,16 +156,15 @@ class SimpleDriver:
         f = lambda r: objective(approx_cone_center, r)
         self.objective_func = f
         result = minimize(f, [0], method='nelder-mead')
-        s = np.arctan(1/(result.x))
+        s = np.arctan(1 / (result.x))
         print(f"Оптимальный радиус поворота {result.x}")
         print(f"Оптимальный угол поворота в AirSim {s}")
         return s
 
-    def model_init(self, control_point,FOV_d = 120,DOV = 16 ):
+    def model_init(self, control_point, FOV_d=120, DOV=16):
         self.pinholeCamera = PinholeCamera(control_point)
         self.cameraDataProccesing = CameraDataProccesing(True, 0)
         self.lidar_data_proccesing = LidarDataProccesing(False)
         self.FOV_r = np.radians(FOV_d)
         self.DOV = DOV
         self.is_init = True
-
