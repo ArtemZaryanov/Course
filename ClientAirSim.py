@@ -13,6 +13,7 @@ import CurveController as Controller
 import cv2
 from Driver import DriverCNN
 from Driver import DriverPID
+from Driver import TrackType
 from Driver import SimpleDriver
 from record_data import lidar_car_data as lidar
 # import keyboard
@@ -135,7 +136,7 @@ is_collect_data = False
 client = airsim.CarClient()
 client.confirmConnection()
 is_simple_CNN_driver = False
-is_PID_driver = False
+is_PID_driver = True
 is_simple_driver = False
 is_real_plot = False
 if is_simple_driver or is_simple_CNN_driver:
@@ -164,8 +165,8 @@ if is_simple_CNN_driver:
     time.sleep(2)
 #TODO Поменять для отчета имена  SimplePID{CNN} для надежности
 if is_PID_driver:
-    SimplePID = DriverPID()
-    SimplePID.
+    # Поменять потом!
+    SimplePID = DriverPID(TrackType.Standard,0.1,0.003,0.002,0.1,client)
 if is_simple_driver:
     X = [880, 380, 380, 880]
     Y = [-80, -10, 10, 100]
@@ -194,7 +195,7 @@ v0 = 0
 e0_velocity = min_velocity
 error_velocity_i_0 = e0_velocity
 is_velocity_control = True
-PID_Velocity = Controller.VelocityControl(e0_velocity, v0, error_velocity_i_0)
+PID_Velocity = Controller.VelocityControl(client,e0_velocity, v0, error_velocity_i_0)
 
 # Для SimMove
 car_controls = client.getCarControls("PhysXCar")
@@ -344,7 +345,6 @@ def write_to_file_sync(data_file,str):
 
 ping_CNN_file = open(f"ping_CNN.dat", 'w')
 ping_PID_file = open(f"ping_PID.dat", 'w')
-
 while True and not is_real_plot:
     print("is_real_plot")
     # SimMove(0.5, 0, client, car_controls, delta)
@@ -362,12 +362,12 @@ while True and not is_real_plot:
 
     if is_PID_driver:
         start_time = time.time()
+        _,throtle, steering = SimplePID.ControlPID()
         if is_velocity_control:
             _, throtle, _ = A_velocity(0.1, 1, 0, client, PID_Velocity)
-        steering = None#SimpleCNN.Control_CNN(get_sim_image(client))
         ping = time.time() - start_time
         ping_PID_file.write(f"{ping}\n")
-        SimMove(throtle, int(steering), client, car_controls, 0.01)
+        SimMove(throtle, steering, client, car_controls, 0.01)
 
     if is_simple_CNN_driver:
         start_time = time.time()

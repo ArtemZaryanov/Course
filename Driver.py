@@ -2,29 +2,83 @@ from tensorflow import keras
 import tensorflow as tf
 import numpy as np
 import cv2
-import SplineRoadNew
+from scipy.interpolate import CubicSpline
+from SplineRoadNew import SplineRoad as SplineRoad
+
+import scipy
 import os
 from CameraProcessing import CameraDataProccesing
 from CameraProcessing import LidarDataProccesing
 from CameraProcessing import PinholeCamera
+from CurveController import CurveControl
+from CurveController import Controller
+
 
 def getRandomNumber():
     return 4
 
+
 class TrackType:
-    Standart = 0
+    Standard = 0
     Epicycloid = 1
     Eight = 2
     Random = 3
     PolarFunction = 4
-    SplevSpline = 5
+    Spline = 5
+
+
 class DriverPID:
-    def __init__(self,type_trace):
-        track_function = None
-        track_points = None
-        SR = SplineRoadNew.SplineRoad(count_cone=150)
-        if type_trace == TrackType.Standart:
-            SR.standard_track_generate_data(s=0.07, a=0)
+    def __init__(self, track_type, delta, kP, kD, kI,client):
+
+        self.PID_Curve = CurveControl(track_type,client)
+        self.SR = self.PID_Curve.getSplineRoadObject()
+        self.setControllerParams(kP, kD, kI)
+        self.client = client
+        self.delta = delta
+        self.errors_curve_i = [0]
+
+    def setControllerParams(self, kP, kD, kI):
+        self.PID_Curve.setControllerParams(kP, kD, kI)
+
+    def sign_steering(self, posAgent, p, function, steering):
+        # Определение знака поворота
+        # Вектор от точки нормали до позиции автомобиля
+        # BP = np.array([p[0] - posAgent[0], p[1] - posAgent[1]])
+        # Вектор касательной
+        # tan = derivative(function, p[0])
+        # C = np.array([tan / np.sqrt(1 + tan ** 2), 1 / np.sqrt(1 + tan ** 2)])
+        print(f"l = {self.PID_Curve.SR.distance_to_point(posAgent)}")
+        # return -np.sign(np.cross(10*C, BP))
+        l_left, _ = self.SR.distance_to_point_l(posAgent)
+        l, _ = self.SR.distance_to_point(posAgent)
+        l_right, _ = self.SR.distance_to_point_r(posAgent)
+        print(f"l_lef={l_left}, l = {l}, l_right = {l_right} ")
+
+        if l_left > l_right:
+            return -1
+        if l_left < l_right:
+            return 1
+        else:
+            return 0
+
+    # _, t, s = A_curve(0.0003, 0.0002, 0.1, client, erros_curve_i)
+    def A_curve(self):
+        _e_c_p, p = self.PID_Curve.e_curve_p()
+        _e_c_d = self.PID_Curve.e_curve_d()
+        _e_c_i = self.PID_Curve.e_curve_i(self.delta, self.errors_curve_i)
+        self.errors_curve_i.append(_e_c_i)
+        correction_s = self.PID_Curve.PIDController(_e_c_p, _e_c_d, _e_c_i)
+        throttle = self.client.getCarControls().throttle
+        pos = self.client.getCarState().kinematics_estimated.position.to_numpy_array()
+        function = self.SR.get_function()
+        p = np.array([p, function(p)])
+        steering = correction_s * self.sign_steering(pos, p, function, self.client.getCarControls().steering)
+        print(
+            f"errors e_c_p={_e_c_p,},e_c_d={_e_c_d},e_c_i={_e_c_i},sign={self.sign_steering(pos, p, function, steering)}")
+        return _e_c_p + _e_c_i, throttle, steering
+
+    def ControlPID(self):
+        return self.A_curve()
 
 
 class DriverCNN:

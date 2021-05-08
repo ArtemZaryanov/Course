@@ -18,16 +18,17 @@
 
 # Если возникнут проблемы https://github.com/microsoft/AirSim/pull/2243
 import numpy as np
-import SplineRoadNew as SR
+from SplineRoadNew import SplineRoad as SplineRoad
 from scipy.misc import derivative
 
 
 class Controller:
 
-    def __init__(self, kProportional=0, kDerivative=0, kIntegral=0):
+    def __init__(self,client,kProportional=0, kDerivative=0, kIntegral=0):
         self._kp = kProportional
         self._kd = kDerivative
         self._ki = kIntegral
+        self.client = client
 
     # error -отклонение от трассы
     # Подаем на вход steering, throttle
@@ -54,13 +55,13 @@ class Controller:
 
 
 class VelocityControl(Controller):
-    def __init__(self,e0,v0,error_velocity_i_0):
-        super().__init__()
+    def __init__(self, client,e0, v0, error_velocity_i_0):
+        super().__init__( client)
         self.e0 = e0
         self.v0 = v0
         self.errors_velocity_i = [error_velocity_i_0]
 
-    def e_velocity_p(self,v: float, v_min: float, v_max: float):
+    def e_velocity_p(self, v: float, v_min: float, v_max: float):
         v_mm_half = (v_min + v_max) / 2
         if v <= v_min:
             return (self.e0 / ((self.v0 - v_max) ** 2)) * (v - v_min) ** 2
@@ -69,7 +70,7 @@ class VelocityControl(Controller):
         if v_max <= v:
             return -(v - v_max) ** 2
 
-    def e_velocity_d(self,a: float, v: float, v_min: float, v_max: float):
+    def e_velocity_d(self, a: float, v: float, v_min: float, v_max: float):
         v_mm_half = (v_min + v_max) / 2
         if v <= v_min:
             return 2 * a * (self.e0 / ((self.v0 - v_max) ** 2)) * (v - v_min) ** 2
@@ -83,7 +84,7 @@ class VelocityControl(Controller):
         if v_max <= v:
             return -2 * a * (v - v_max) ** 2
 
-    def e_velocity_i(self,v: float, v_min: float, v_max: float,delta):
+    def e_velocity_i(self, v: float, v_min: float, v_max: float, delta):
         e_p = self.e_velocity_p(v, v_min, v_max)
         self.errors_velocity_i.append(e_p)
         e_v_i = sum(self.errors_velocity_i) * delta
@@ -91,31 +92,34 @@ class VelocityControl(Controller):
 
 
 class CurveControl(Controller):
-    def __init__(self):
-        super().__init__()
+    def __init__(self,track_type,client):
+        super().__init__(client)
+        self.SR = SplineRoad(track_type)
 
-    def e_curve_p(self, client):
-        pos, _, _ = self.CarState(client)
-        l, p = SR.distance_to_point(pos)
+    def e_curve_p(self):
+        pos, _, _ = self.CarState(self.client)
+        l, p = self.SR.distance_to_point(pos)
         return l, p
 
-    def e_curve_d(self, client):
-        pos, _, kinematics = self.CarState(client)
-        l, p = self.e_curve_p(client)
+    def e_curve_d(self):
+        pos, _, kinematics = self.CarState(self.client)
+        l, p = self.e_curve_p()
         vx = kinematics.linear_velocity.x_val
         vy = kinematics.linear_velocity.y_val
-        f = SR.get_function()
-        df = derivative(SR.get_function(), pos[0])
-        _e = (2 / (l ** 2 + 1)) * ((pos[0] - p) * (vx) + (pos[1] - f(p)) * (vy))
+        f = self.SR.get_function()
+        df = derivative(self.SR.get_function(), pos[0])
+        _e = (2 / (l ** 2 + 1)) * ((pos[0] - p) * vx + (pos[1] - f(p)) * vy)
         if abs(_e) > 10000:
             return 0
         else:
             return _e
 
-    def e_curve_i(self, client, delta, erros_curve_i):
-        e_p, _ = self.e_curve_p(client)
-        erros_curve_i.append(e_p)
+    def e_curve_i(self, delta, erros_curve_i):
+        e_p, _ = self.e_curve_p()
         if len(erros_curve_i) > 100:
             buff = erros_curve_i[-1]
             erros_curve_i = [buff]
         return sum(erros_curve_i) * delta
+
+    def getSplineRoadObject(self):
+        return self.SR
