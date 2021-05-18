@@ -17,7 +17,6 @@ from CurveController import Controller
 def getRandomNumber():
     return 4
 
-
 class TrackType:
     Standard = 0
     Epicycloid = 1
@@ -103,6 +102,23 @@ class DriverCNN:
     def _convert_CNN(self, output):
         pass
 
+class ArcDriver:
+    # Надо получить сразу все конусы среды
+    def __init__(self,client):
+        self.client = client
+        self.cones_left = None
+        self.cones_right = None
+        pass
+    # Эммуляция работы Лидара. Потом убрать.
+    # Находим все конусы в радиусе R от автомобиля
+    def get_all_cone(self):
+        self.cones_left = self.client.simListSceneObjects('FloatingActor($|[^a-zA-Z]+)')
+        self.cones_right = self.client.simListSceneObjects('FloatingActorYellow($|[^a-zA-Z]+)')
+    def get_cone(self,R=1):
+        pass
+    # Решаем задачу оптимизации
+    def Control_Arc(self):
+        pass
 
 class SimpleDriver:
     def __init__(self):
