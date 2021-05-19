@@ -11,6 +11,7 @@ def get_cone(R=1):
     print(pos_a)
     cones_left_in = cones_left[np.where(np.linalg.norm(cones_left - pos_a,axis=1) < R)]
     cones_right_in = cones_right[np.where(np.linalg.norm(cones_right - pos_a,axis=1) < R)]
+    print("ee")
     # TODO можно соератить в два раза если размеры одинаковые
     # Ищем все левые конусы
     # for cone_names in cones_left:
