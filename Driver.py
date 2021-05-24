@@ -4,7 +4,7 @@ import numpy as np
 import cv2
 from scipy.interpolate import CubicSpline
 from SplineRoadNew import SplineRoad as SplineRoad
-
+import airsim
 import scipy
 import os
 from CameraProcessing import CameraDataProccesing
@@ -17,6 +17,7 @@ from CurveController import Controller
 def getRandomNumber():
     return 4
 
+
 class TrackType:
     Standard = 0
     Epicycloid = 1
@@ -27,9 +28,9 @@ class TrackType:
 
 
 class DriverPID:
-    def __init__(self, track_type, delta, kP, kD, kI,client):
+    def __init__(self, track_type, delta, kP, kD, kI, client):
 
-        self.PID_Curve = CurveControl(track_type,client)
+        self.PID_Curve = CurveControl(track_type, client)
         self.SR = self.PID_Curve.getSplineRoadObject()
         self.setControllerParams(kP, kD, kI)
         self.client = client
@@ -90,7 +91,7 @@ class DriverCNN:
     # чтобы получить  вектор управления
     def Control_CNN(self, image: np.ndarray):
         # assert self.model_CNN is None, "model is None"
-        return self.model_CNN.predict_proba([image[np.newaxis]]).argmax() - 1  # Пока так!!!!!
+        return self.model_CNN.predict([image[np.newaxis]]).argmax() - 1  # Пока так!!!!!
 
     # Иннициализация модели
     def model_CNN_init(self, path):
@@ -102,23 +103,122 @@ class DriverCNN:
     def _convert_CNN(self, output):
         pass
 
+
 class ArcDriver:
     # Надо получить сразу все конусы среды
-    def __init__(self,client):
+    def __init__(self, client):
         self.client = client
         self.cones_left = None
         self.cones_right = None
-        pass
+        self.get_all_cone()
+
     # Эммуляция работы Лидара. Потом убрать.
     # Находим все конусы в радиусе R от автомобиля
     def get_all_cone(self):
-        self.cones_left = self.client.simListSceneObjects('FloatingActor($|[^a-zA-Z]+)')
-        self.cones_right = self.client.simListSceneObjects('FloatingActorYellow($|[^a-zA-Z]+)')
-    def get_cone(self,R=1):
-        pass
-    # Решаем задачу оптимизации
+        b_l = lambda n: self.client.simGetObjectPose(n).position.to_numpy_array()[0:2]
+        self.cones_left = np.array(list(map(b_l, self.client.simListSceneObjects('FloatingActor_($|[^a-zA-Z]+)'))))
+        self.cones_right = np.array(
+            list(map(b_l, self.client.simListSceneObjects('FloatingActorYellow_($|[^a-zA-Z]+)'))))
+
+    def get_cone_arc(self):
+        R = 16
+        FOV = 180
+        pos_a = self.client.simGetVehiclePose().position.to_numpy_array()[0:2]
+        orientation = airsim.to_eularian_angles(self.client.simGetVehiclePose().orientation)
+        yaw = orientation[2]
+        arc_pnts = self.get_arc_pnts(R, np.radians(FOV), yaw, pos_a[0], pos_a[1])
+
+        cones_left_in_circle, cones_right_in_circle = self.get_cone(R)
+        cones_left_in_arc = self.find_in_contour(
+            cones_left_in_circle, arc_pnts, R, np.radians(FOV), pos_a[0], pos_a[1], yaw)
+        cones_right_in_arc = self.find_in_contour(
+            cones_right_in_circle, arc_pnts, R, np.radians(FOV), pos_a[0], pos_a[1], yaw)
+        return cones_left_in_arc, cones_right_in_arc
+
+    def get_h_errors(self):
+        cones_left_in_arc, cones_right_in_arc = self.get_cone(16)
+        pos_a = self.client.simGetVehiclePose().position.to_numpy_array()[0:2]
+        cones_in_arc = np.concatenate([cones_left_in_arc, cones_right_in_arc], axis=0)
+
+        h_errors = np.prod((np.linalg.norm(cones_in_arc - pos_a, axis=1)) ** 2, axis=0) / cones_in_arc.shape[0]
+        return h_errors
+
+    def get_cone_errors(self):
+        cones_left_in_arc, cones_right_in_arc = self.get_cone(16)
+        pos_a = self.client.simGetVehiclePose().position.to_numpy_array()[0:2]
+        cones_in_arc = np.concatenate([cones_left_in_arc, cones_right_in_arc], axis=0)
+
+        cone_errors = np.mean((np.linalg.norm(cones_in_arc - pos_a, axis=1)) ** 2, axis=0)
+        return cone_errors
+
+    def objective(self, pnts, r):
+        return np.sum((pnts[:, 0] ** 2 - ((pnts[:, 1] - r) ** 2) ** (1 / 2) - r) ** 2)
+
+    # Решаем задачу оптимизаци
     def Control_Arc(self):
-        pass
+        cones_left_in_arc, cones_right_in_arc = self.get_cone_arc()
+        pos_a = self.client.simGetVehiclePose().position.to_numpy_array()[0:2]
+
+        from scipy.optimize import minimize
+        # TODO построить график
+        # Веткоризовать
+
+        # № Диапозон указать
+        # TODO  две задачи оптимизации при +-r у одноо полоиждтельный и другой отрицательй (уже не надо скоорее  всего)
+        # TODO  Не учитвать те которые не в угле обзоре
+        # График
+        pnts = np.concatenate([cones_left_in_arc, cones_right_in_arc], axis=0)
+        f = lambda r: self.objective(pnts, r)
+        self.objective_func = f
+        result = minimize(f, [1], method='nelder-mead')
+        s = np.arctan(1 / (result.x))
+        print(f"Оптимальный радиус поворота {result.x}")
+        print(f"Оптимальный угол поворота в AirSim {s}")
+        return s
+
+    def get_cone(self, R):
+        cones_left_in = []
+        cones_right_in = []
+        pos_a = self.client.simGetVehiclePose().position.to_numpy_array()[0:2]
+        cones_left_in = self.cones_left[np.where(np.linalg.norm(self.cones_left - pos_a, axis=1) < R)]
+        cones_right_in = self.cones_right[np.where(np.linalg.norm(self.cones_right - pos_a, axis=1) < R)]
+        return np.array(cones_left_in), np.array(cones_right_in)
+
+    # получить точки дуги радиуса r с углом phi с углом alpha(в радианах) относительно OX в точке (x0,y0)
+    def get_arc_pnts(self, r, phi, alpha, x0, y0, N=100):
+        # начальная точка
+        arc_pnts = [[x0, y0]]
+        # первый край
+        arc_pnts.append([x0 + r * np.cos(alpha - phi / 2), y0 + r * np.sin(alpha - phi / 2)])
+        # дуга
+        theta = np.linspace(alpha - phi / 2, alpha + phi / 2, num=N)
+        arc_pnts = arc_pnts + [[x0 + r * np.cos(t), y0 + r * np.sin(t)] for t in theta]
+        # второй край
+        arc_pnts.append([x0 + r * np.cos(alpha + phi / 2), y0 + r * np.sin(alpha + phi / 2)])
+        # возвращаемся
+
+        arc_pnts.append(arc_pnts[0])
+        return np.array(arc_pnts)
+
+    # отобрать все точки, которые входят в данный сектор радиуса r и углом phi и направлением alpha
+    def find_in_contour(self, points, arc_pnts, r, phi, x0, y0, alpha, epsilon_1=10 ** (-2), epsilon_2=10 ** (-2)):
+        # 2 точка и предпоследняя это границы, тогда вектор направления
+        arc_pnts_ = arc_pnts
+        xd2 = (arc_pnts_[1][0] + arc_pnts_[-2][0]) / 2
+        yd2 = (arc_pnts_[1][1] + arc_pnts_[-2][1]) / 2
+        direct_vec = [xd2, yd2]
+        # по расстоянию
+        inds_r = np.where(np.linalg.norm(points - arc_pnts[0], axis=1) <= r * (1 + epsilon_1))
+        points_ir = points[inds_r]
+        # по углу
+        angles = np.arccos(np.matmul(points_ir - arc_pnts[0], direct_vec - arc_pnts[0])
+                           / (np.linalg.norm(points_ir - arc_pnts[0], axis=1) * np.linalg.norm(
+            direct_vec - arc_pnts[0])))
+        # & поэлеиентное и and сравнивает весь
+        ind_a = np.where((angles <= phi * (epsilon_2 + 1) / 2) & (-phi * (epsilon_2 + 1) / 2 <= angles))
+        points_a = points_ir[ind_a]
+        return points_a
+
 
 class SimpleDriver:
     def __init__(self):

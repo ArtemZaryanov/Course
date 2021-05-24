@@ -13,6 +13,7 @@ import CurveController as Controller
 import cv2
 from Driver import DriverCNN
 from Driver import DriverPID
+from Driver import ArcDriver
 from Driver import TrackType
 from Driver import SimpleDriver
 from record_data import lidar_car_data as lidar
@@ -135,10 +136,11 @@ is_collect_data = False
 # connect to the AirSim simulator
 client = airsim.CarClient()
 client.confirmConnection()
-is_simple_CNN_driver = False
-is_PID_driver = True
+is_simple_CNN_driver = True
+is_PID_driver = False
 is_simple_driver = False
 is_real_plot = False
+is_arc_drive = False
 if is_simple_driver or is_simple_CNN_driver:
     client.enableApiControl(True)
 else:
@@ -162,11 +164,15 @@ if is_simple_CNN_driver:
 
     SimpleCNN = DriverCNN()
     SimpleCNN.model_CNN_init(path_model + "\SimpleCNN")
+    # Для получнеия ошибок
+    arcDriver = ArcDriver(client)
     time.sleep(2)
 #TODO Поменять для отчета имена  SimplePID{CNN} для надежности
 if is_PID_driver:
     # Поменять потом!
     SimplePID = DriverPID(TrackType.Standard,0.1,0.003,0.002,0.1,client)
+if is_arc_drive:
+    arcDriver = ArcDriver(client)
 if is_simple_driver:
     X = [880, 380, 380, 880]
     Y = [-80, -10, 10, 100]
@@ -189,8 +195,8 @@ kp_velocity = 0
 kd_velocity = 0
 ki_velocity = 0
 erros_velocity_i = []
-max_velocity = 20
-min_velocity = 10
+max_velocity = 25
+min_velocity = 23
 v0 = 0
 e0_velocity = min_velocity
 error_velocity_i_0 = e0_velocity
@@ -345,6 +351,14 @@ def write_to_file_sync(data_file,str):
 
 ping_CNN_file = open(f"ping_CNN.dat", 'w')
 ping_PID_file = open(f"ping_PID.dat", 'w')
+ping_Arc_Driver_file = open(f"ping_Arc_Driver.dat", 'w')
+cone_errors_CNN = open(f"error_cone_CNN.dat",'w')
+ht_CNN = open(f"ht_CNN.dat",'w')
+
+def write_to_file_sync(data_file,str):
+    data_file.write(str)
+    data_file.flush()
+    os.fsync(data_file.fileno())
 while True and not is_real_plot:
     print("is_real_plot")
     # SimMove(0.5, 0, client, car_controls, delta)
@@ -368,14 +382,28 @@ while True and not is_real_plot:
         ping = time.time() - start_time
         ping_PID_file.write(f"{ping}\n")
         SimMove(throtle, steering, client, car_controls, 0.01)
-
+    if is_arc_drive:
+        start_time = time.time()
+        steering = arcDriver.Control_Arc()
+        _, throtle, _ = A_velocity(0.1, 1, 0, client, PID_Velocity)
+        ping = time.time() - start_time
+        ping_Arc_Driver_file.write(f"{ping}\n")
+        SimMove(throtle, steering, client, car_controls, 0.01)
     if is_simple_CNN_driver:
         start_time = time.time()
         if is_velocity_control:
             _, throtle, _ = A_velocity(0.1, 1, 0, client, PID_Velocity)
         steering = SimpleCNN.Control_CNN(get_sim_image(client))
         ping = time.time() - start_time
-        ping_CNN_file.write(f"{ping}\n")
+        write_to_file_sync(ping_CNN_file,f"{ping}\n")
+        h_error = arcDriver.get_h_errors()
+        write_to_file_sync(ht_CNN, f"{h_error}\n")
+        # ping_CNN_file.write(f"{ping}\n")
+        e_cone = arcDriver.get_cone_errors()
+        write_to_file_sync(cone_errors_CNN, f"{e_cone}\n")
+        # cone_errors_CNN.write(f"{e_cone}\n")
+
+        print("errors=",e_cone)
         # write_to_file_sync(ping_CNN_file,f"{ping}")
         # print("- -- %s seconds ---" % ping)
         SimMove(throtle, int(steering), client, car_controls, 0.01)

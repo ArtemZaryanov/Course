@@ -91,16 +91,21 @@ class SplineRoad:
         cLxi = (1 - s) * np.sin(thetaL) - a
         cLyi = (1 - s) * np.cos(thetaL)
 
-        lx = np.linspace(-a, a, self.count_cone // 5)
+        lx = np.linspace(-a, a, self.count_cone // 7)
         lUy = np.ones(lx.shape[0]) * cLy[-1]
         lUyi = np.ones(lx.shape[0]) * cLyi[-1]
         lDy = np.ones(lx.shape[0]) * cLy[0]
         lDyi = np.ones(lx.shape[0]) * cLyi[0]
-
-        self.lcx = np.concatenate([cLx, lx, lx, cRx])
-        self.lcy = np.concatenate([cLy, lUy, lDy, cRy])
-        self.rcx = np.concatenate([cLxi, lx, lx, cRxi])
-        self.rcy = np.concatenate([cLyi, lUyi, lDyi, cRyi])
+        if a == 0:
+            self.lcx = np.concatenate([cLx, cRx])
+            self.lcy = np.concatenate([cLy, cRy])
+            self.rcx = np.concatenate([cLxi, cRxi])
+            self.rcy = np.concatenate([cLyi, cRyi])
+        else:
+            self.lcx = np.concatenate([cLx, lx, lx, cRx])
+            self.lcy = np.concatenate([cLy, lUy, lDy, cRy])
+            self.rcx = np.concatenate([cLxi, lx, lx, cRxi])
+            self.rcy = np.concatenate([cLyi, lUyi, lDyi, cRyi])
 
         start_point = np.array([self.transform_x(0), self.transform_y(1 + cLyi[-1]) / 2])
         start_direct = 0
@@ -272,7 +277,7 @@ class SplineRoad:
             {'X': self.transform_x(self.lcx), 'Y': self.transform_y(self.lcy), 'isPhysics': False})
         if self.xxc is not None:
             data_central = pd.DataFrame(
-                {'X': self.transform_x(self.xxc), 'Y': self.transform_y(self.ycc), 'isPhysics': False})
+                {'X': self.transform_x(self.xxc), 'Y': self.transform_y(self.yyc), 'isPhysics': False})
         else:
             data_central = pd.DataFrame(
                 {'X': self.transform_x([0]), 'Y': self.transform_y([0]), 'isPhysics': False})
