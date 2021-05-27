@@ -137,6 +137,86 @@ class SplineRoad:
         xi_, yi_ = splev(np.linspace(0, 1, point_count), tck)
         return xi_, yi_
 
+    def test_track(self,s = 0.1,output=True):
+        x = np.array([
+            0,
+            0.1,
+            0.2,
+            0.3,
+            0.4,
+            0.5,
+            0.6,
+
+            1,
+            1.5,
+            2.0,
+
+            2.05,
+            2.1,
+            2.2,
+            2.3,
+            2.4,
+            2.5,
+            2.6,
+
+            3,
+            3.5,
+            4.0
+
+        ])
+        y = np.array([
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+            0.1,
+
+            0.2,
+            0.2,
+            0.2,
+
+            0.2,
+            0.2,
+            0.2,
+            0.2,
+            0.2,
+            0.2,
+            0.2,
+
+            0.1,
+            0.2,
+            0.1
+        ]) + 0.3
+        t = np.linspace(0, 4, self.count_cone)
+        cs = CubicSpline(x, y)
+        cs_p = CubicSpline(x, y + s / 2)
+        cs_n = CubicSpline(x, y - s / 2)
+
+        self.lcy = cs_n(t)
+        self.lcx = t
+
+        self.rcy = cs_p(t)
+        self.rcx = t
+
+        start_point = np.array([self.transform_x(0), self.transform_y(0.4)])
+        start_direct = 0
+        start_data = pd.DataFrame(
+            {'X': [start_point[0]], 'Y': [start_point[1]], "direct": [start_direct]})
+        if os.path.exists("start_data.csv"):
+            print("exist")
+            os.remove("start_data.csv")
+            start_data.to_csv("start_data.csv")
+        else:
+            start_data.to_csv("start_data.csv")
+        self.xxc = (self.lcx + self.rcx) / 2
+        self.yyc = (self.lcy + self.rcy) / 2
+        self.is_generated_data = True
+        if output:
+            return np.array([[self.lcx, self.lcy], [self.rcx, self.rcy]]), np.array(
+                [self.xxc, self.yyc])
+
     def track_eight_generate_data(self, output=True):
         x = np.array([-1, -1.2, -1, -0.1])
         y = np.array([-0.8, 0, 0.8, 0])
@@ -155,12 +235,25 @@ class SplineRoad:
                        1, -1, -0.6])
         x2i, y2i = self.splev_spline_data(x2, y2, self.count_cone)
 
+        start_point = np.array([self.transform_x(x[0]), self.transform_y(y[0])])
+        start_direct = 0
+        start_data = pd.DataFrame(
+            {'X': [start_point[0]], 'Y': [start_point[1]], "direct": [start_direct]})
+        if os.path.exists("start_data.csv"):
+            print("exist")
+            os.remove("start_data.csv")
+            start_data.to_csv("start_data.csv")
+        else:
+            start_data.to_csv("start_data.csv")
+
         self.lcx = np.concatenate([x2i])
         self.lcy = np.concatenate([y2i])
 
         self.rcx = np.concatenate([xi, x1i])
         self.rcy = np.concatenate([y1i, y1i])
         self.is_generated_data = True
+        self.xxc = (self.lcx + self.rcx)/2
+        self.xxc = (self.lcy + self.rcy)/2
         if output:
             return np.array([[self.lcx, self.lcy], [self.rcx, self.rcy]]), np.array(
                 [self.xxc, self.yyc])
