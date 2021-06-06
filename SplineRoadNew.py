@@ -91,7 +91,7 @@ class SplineRoad:
         cLxi = (1 - s) * np.sin(thetaL) - a
         cLyi = (1 - s) * np.cos(thetaL)
 
-        lx = np.linspace(-a, a, self.count_cone // 7)
+        lx = np.linspace(-a, a, self.count_cone // 20)
         lUy = np.ones(lx.shape[0]) * cLy[-1]
         lUyi = np.ones(lx.shape[0]) * cLyi[-1]
         lDy = np.ones(lx.shape[0]) * cLy[0]
@@ -216,26 +216,40 @@ class SplineRoad:
         if output:
             return np.array([[self.lcx, self.lcy], [self.rcx, self.rcy]]), np.array(
                 [self.xxc, self.yyc])
+    def s_track_generate_data(self,s=0.1,output=True):
+        R = 0.4
+        RL = R - s / 2
+        RR = R + s / 2
+        thetaU = np.linspace(0, 3 * np.pi / 2)
+        thetaD = np.linspace(np.pi / 2, -np.pi)
+        thetaUL1 = np.linspace(np.pi / 2, -np.pi)
+        thetaDL2 = np.linspace(0, 3 * np.pi / 2)
 
-    def track_eight_generate_data(self, output=True):
-        x = np.array([-1, -1.2, -1, -0.1])
-        y = np.array([-0.8, 0, 0.8, 0])
-        xi, yi = self.splev_spline_data(x, y, self.count_cone // 2)
-        x1 = np.array([1, 1.2, 1, 0.1
-                       ])
-        y1 = np.array([-0.8, 0, 0.8, 0])
-        x1i, y1i = self.splev_spline_data(x1, y1, self.count_cone // 2)
+        thetaUR1 = np.linspace(np.pi / 2, -np.pi)
+        thetaDR2 = np.linspace(0, 3 * np.pi / 2)
 
-        x2 = np.array([-1, -1,
-                       0,
-                       1, 1, 0
-                       ])
-        y2 = np.array([-1, 1,
-                       0.6,
-                       1, -1, -0.6])
-        x2i, y2i = self.splev_spline_data(x2, y2, self.count_cone)
+        # Середина трассы
+        xRu = R * np.cos(thetaU)
+        yRu = R + R * np.sin(thetaU)
 
-        start_point = np.array([self.transform_x(x[0]), self.transform_y(y[0])])
+        xRd = R * np.cos(thetaD)
+        yRd = -R + R * np.sin(thetaD)
+
+        # Левые конусы
+        xRuL1 = RL * np.cos(thetaUL1)
+        yRuL1 = -R + RL * np.sin(thetaUL1)
+
+        xRdL2 = RR * np.cos(thetaDL2)
+        yRdL2 = R + RR * np.sin(thetaDL2)
+        # Правые конусы
+        xRuR1 = RR * np.cos(thetaUR1)
+        yRuR1 = -R + RR * np.sin(thetaUR1)
+
+        xRdR2 = RL * np.cos(thetaDR2)
+        yRdR2 = R + RL * np.sin(thetaDR2)
+
+
+        start_point = np.array([self.transform_x(xRd[-1]), self.transform_y(yRd[-1])])
         start_direct = 0
         start_data = pd.DataFrame(
             {'X': [start_point[0]], 'Y': [start_point[1]], "direct": [start_direct]})
@@ -246,14 +260,70 @@ class SplineRoad:
         else:
             start_data.to_csv("start_data.csv")
 
-        self.lcx = np.concatenate([x2i])
-        self.lcy = np.concatenate([y2i])
+        self.lcx = np.concatenate([xRuL1,xRdL2])
+        self.lcy = np.concatenate([yRuL1,yRdL2])
 
-        self.rcx = np.concatenate([xi, x1i])
-        self.rcy = np.concatenate([y1i, y1i])
+        self.rcx = np.concatenate([xRuR1,xRdR2])
+        self.rcy = np.concatenate([yRuR1,yRdR2])
         self.is_generated_data = True
-        self.xxc = (self.lcx + self.rcx)/2
-        self.xxc = (self.lcy + self.rcy)/2
+        self.xxc = np.concatenate([xRu,xRd])
+        self.yyc = np.concatenate([yRu,yRd])
+        if output:
+            return np.array([[self.lcx, self.lcy], [self.rcx, self.rcy]]), np.array(
+                [self.xxc, self.yyc])
+    def track_eight_generate_data(self,s=0.1,output=True):
+
+        R = 0.4
+        RL = R - s / 2
+        RR = R + s / 2
+        thetaR = np.arccos(np.sqrt(RR ** 2 - R ** 2) / RR)
+        theta = np.linspace(0, 2 * np.pi)
+        thetaUL = np.linspace(0, 2 * np.pi)
+        thetaUR = np.linspace(-thetaR, np.pi + thetaR)
+
+        thetaDL = np.linspace(0, 2 * np.pi)
+        thetaDR = np.linspace(-thetaR, np.pi + thetaR) - np.pi
+
+        # Середина трассы
+        xRu = R * np.cos(theta)
+        yRu = R + R * np.sin(theta)
+
+        xRd = R * np.cos(theta)
+        yRd = -R + R * np.sin(theta)
+
+        # Левые конусы
+        xRuL = RL * np.cos(thetaUL)
+        yRuL = R + RL * np.sin(thetaUL)
+
+        xRdL = RL * np.cos(thetaDL)
+        yRdL = -R + RL * np.sin(thetaDL)
+        # Правые конусы
+        xRuR = RR * np.cos(thetaUR)
+        yRuR = R + RR * np.sin(thetaUR)
+
+        xRdR = RR * np.cos(thetaDR)
+        yRdR = -R + RR * np.sin(thetaDR)
+
+
+        start_point = np.array([self.transform_x(0.0), self.transform_y(0.0)])
+        start_direct = 0
+        start_data = pd.DataFrame(
+            {'X': [start_point[0]], 'Y': [start_point[1]], "direct": [start_direct]})
+        if os.path.exists("start_data.csv"):
+            print("exist")
+            os.remove("start_data.csv")
+            start_data.to_csv("start_data.csv")
+        else:
+            start_data.to_csv("start_data.csv")
+
+        self.lcx = np.concatenate([xRuL,xRdL])
+        self.lcy = np.concatenate([yRuL,yRdL])
+
+        self.rcx = np.concatenate([xRuR,xRdR])
+        self.rcy = np.concatenate([yRuR,yRdR])
+        self.is_generated_data = True
+        self.xxc = np.concatenate([xRu,xRd])
+        self.yyc = np.concatenate([yRu,yRd])
         if output:
             return np.array([[self.lcx, self.lcy], [self.rcx, self.rcy]]), np.array(
                 [self.xxc, self.yyc])

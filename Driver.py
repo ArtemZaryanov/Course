@@ -106,13 +106,19 @@ class DriverCNN:
 
 class ArcDriver:
     # Надо получить сразу все конусы среды
-    def __init__(self, client):
+    def __init__(self, client,steering_func = None):
         self.client = client
         self.cones_left = None
         self.cones_right = None
         self.r0 = 0
         self.get_all_cone()
+        self.a = 7.73240547
+        self.b = -4.09307997
+        self.steering_func_p = lambda r:np.arctan(self.a/(self.b/2 + r))/(np.pi/2)
+        self.steering_func_n = lambda r: np.arctan(self.a / (self.b / 2 + r)) / (np.pi / 2)
         self.lidar_R = 16
+        self.x0 = [0,0,0]
+
 
     # Эммуляция работы Лидара. Потом убрать.
     # Находим все конусы в радиусе R от автомобиля
@@ -169,40 +175,299 @@ class ArcDriver:
         cone_errors = np.mean((np.linalg.norm(cones_in_arc - pos_a, axis=1)) ** 1/2, axis=0)
         return cone_errors
 
-    def objective(self, pnts, r):
-        # return np.sum((pnts[:, 0] ** 2 - ((pnts[:, 1] - r) ** 2) ** (1 / 2) - r) ** 2)
-        buf = 0
-        for pnt in pnts:
-            buf = buf + np.sum(((pnt[0] ** 2 + ((pnt[1] - r) ** 2)) ** (1 / 2) - r))
-        return buf
+    def rotatePoint(self,centerPoint, point, angle):
 
-        # Решаем задачу оптимизаци
+        """Rotates a point around another centerPoint. Angle is in degrees.
+        Rotation is counter-clockwise"""
+        import math
+        angle = math.radians(angle)
+        temp_point = point[0] - centerPoint[0], point[1] - centerPoint[1]
+        temp_point = (temp_point[0] * math.cos(angle) - temp_point[1] * math.sin(angle),
+                      temp_point[0] * math.sin(angle) + temp_point[1] * math.cos(angle))
+        temp_point = temp_point[0] + centerPoint[0], temp_point[1] + centerPoint[1]
+        return temp_point
 
+    def distance_multi(self, c_l, c_r, g):
+        a, b, r = g
+        f = 0
+        # Векторизовать
+        for cc_ in c_l:
+            f = f + ((np.linalg.norm(
+                cc_ - np.array([a, b]))) ** 2 - r ** 2)  # *np.exp(-np.linalg.norm(cc_ - np.array([0,r]))**4)
+        for cc_ in c_r:
+            f = f + (np.linalg.norm(
+                cc_ - np.array([a, b])) ** 2 - r ** 2)  # *np.exp(-np.linalg.norm(cc_ - np.array([0,r]))**4)
+        return f
+
+    def optimization_my(self, yaw, c_l, c_r):
+        plot = False
+        from scipy import optimize
+        def near_fine(d):
+            # if d<0:
+            #    raise ValueError("Wrong d=%f"%(d))
+            return 1 * np.exp(-2*d * d / 5.5)
+
+        #def near_fine(d):
+            # if d<0:
+            #    raise ValueError("Wrong d=%f"%(d))
+        #    return 1 * np.exp(-d * d / 9 * 1)
+
+        def distance_my(c_l, c_r, r):
+            f = 0
+            if r > 0:
+                for cc_ in c_l:
+                    d1 = np.hypot(cc_[0], cc_[1] - r) - r
+                    if d1 > 0:
+                        #if plot: plt.scatter(cc_[0], cc_[1])
+                        f += d1
+                    # else:
+                    f += near_fine(-d1)
+                for cc_ in c_r:
+                    d2 = np.hypot(cc_[0], cc_[1] - r) - r
+                    if d2 < 0:
+                        #if plot: plt.scatter(cc_[0], cc_[1])
+                        f += -d2
+                    #            else:
+                    #                f+=near_fine(d2)
+                    f += near_fine(d2)
+            else:
+                for cc_ in c_l:
+                    d1 = np.hypot(cc_[0], cc_[1] - r) + r
+                    if d1 < 0:
+                        #if plot: plt.scatter(cc_[0], cc_[1])
+                        f += -d1
+                    # lse:
+                    #   f+=near_fine(d1)
+                    f += near_fine(d1)
+                for cc_ in c_r:
+                    d2 = np.hypot(cc_[0], cc_[1] - r) + r
+                    if d2 > 0:
+                        #if plot: plt.scatter(cc_[0], cc_[1])
+                        f += d2
+                    # lse:
+                    #   f+=near_fine(-d2)
+
+                    f += near_fine(-d2)
+
+            #       if cc_[0]**2+(cc_[1]-r)**2<r**2:
+            #            f = f + (cc_[0]**2+(cc_[1]-r)**2)
+            #    for cc_ in c_r:
+            #        if ((cc_[0]**2+(cc_[1]-r)**2)**(1))>r**2:
+            #            f = f + (cc_[0]**2+(cc_[1]-r)**2)
+            return f
+
+        v_my = lambda r: distance_my(c_l, c_r, r)
+        result = optimize.minimize(v_my,[0],
+                            method ='Nelder-mead',options={'xatol':10**(-4),'initial_simplex':np.array([[-100],[100]])})
+        r = result.x
+        d = 1
+        if r>0:
+            d=1
+        else:
+            d=-1
+
+        return r[0],d
+    def optimization_raz(self, yaw, c_l, c_r):
+        from scipy import optimize
+        def distance_razim_1(c_l, c_r, rr):
+            f = 0
+            r = rr
+            for cc_ in c_l:
+                w = 1 / (1 + np.exp((cc_[0] ** 2 + cc_[1] ** 2 - 5) / 2))
+                f = f + (((r - cc_[0]) ** 2 + cc_[1] ** 2 - r ** 2)) * 1
+            for cc_ in c_r:
+                w = 1 / (1 + np.exp((cc_[0] ** 2 + cc_[1] ** 2 - 5) / 2))
+                f = f + (((r - cc_[0]) ** 2 + cc_[1] ** 2 + r ** 2)) * 1
+            return f
+        def distance_razim_1__(c_l, c_r, r):
+            f = 0
+            for cc_ in c_l:
+                f = f + (np.linalg.norm(
+                    cc_ - np.array([r, 0])) ** 2 - r ** 2)/np.linalg.norm(cc_)**2  # *np.exp(-np.linalg.norm(cc_ - np.array([0,r]))**4)
+            for cc_ in c_r:
+                f = f + (np.linalg.norm(
+                    cc_ - np.array([r, 0])) ** 2 - r ** 2)/np.linalg.norm(cc_)**2  # *np.exp(-np.linalg.norm(cc_ - np.array([0,r]))**4)
+            return f
+
+        v1 = lambda r: distance_razim_1(c_l, c_r, r)
+
+        def distance_razim_2(c_l, c_r, r):
+            f = 0
+            for cc_ in c_l:
+                w = 1 / (1 + np.exp((cc_[0] ** 2 + cc_[1] ** 2 - 5) / 2))
+                f = f + (((r - cc_[1]) ** 2 + cc_[0] ** 2 - r ** 2)) * 1
+            for cc_ in c_r:
+                w = 1 / (1 + np.exp((cc_[0] ** 2 + cc_[1] ** 2 - 5) / 2))
+                f = f + (((r - cc_[1]) ** 2 + cc_[0] ** 2 + r ** 2)) * 1
+            return f
+        def distance_razim_2__(c_l, c_r, r):
+            f = 0
+            for cc_ in c_l:
+                f = f + ((np.linalg.norm(
+                    cc_ - np.array([0, r]))) ** 2 - r ** 2)/np.linalg.norm(cc_)**2  # *np.exp(-np.linalg.norm(cc_ - np.array([0,r]))**4)
+            for cc_ in c_r:
+                f = f + (np.linalg.norm(
+                    cc_ - np.array([0, r])) ** 2 - r ** 2)/np.linalg.norm(cc_)**2  # *np.exp(-np.linalg.norm(cc_ - np.array([0,r]))**4)
+            return f
+
+        v2 = lambda r: distance_razim_2(c_l, c_r, r)
+
+        result_1 = optimize.minimize(v1, [0])
+        result_2 = optimize.minimize(v2, [0])
+        if result_2.fun > result_1.fun:
+            r = result_1.x
+        else:
+            r = result_2.x
+        d = 1
+        if r<0:
+            d = d*(-1)
+        else:
+            d = d*(1)
+        return r[0],d
+    def optimization(self,yaw,c_l,c_r):
+        from scipy import optimize
+        def objective(c_l, c_r, g):
+            a, b, r = g
+            f = 0
+            for cc_ in c_l:
+                f = f + ((np.linalg.norm(cc_ - np.array([a, b]))) ** 2 - r ** 2)#*np.linalg.norm(cc_)
+            for cc_ in c_r:
+                f = f + (np.linalg.norm(cc_ - np.array([a, b])) ** 2 - r ** 2) #*np.linalg.norm(cc_)
+            return f
+        R = self.lidar_R
+        con_1_1 = lambda g: g[0] ** 2 + g[1] ** 2 - g[2] ** 2  # Чтобы проходило через (0,0)
+        nlc_1_1 = optimize.NonlinearConstraint(con_1_1, 0, 0)
+        con_1_2 = lambda g: np.sqrt(g[0] ** 2 + g[1] ** 2) - R  # Чтобы окруность поврота лежала вне круга лидара
+        nlc_1_2 = optimize.NonlinearConstraint(con_1_2, 0, np.inf)
+
+        new_x = np.cos(yaw)
+        new_y = np.sin(yaw)
+        con_1_3 = lambda g: g[0] * new_x + g[1] * new_y
+        nlc_1_3 = optimize.NonlinearConstraint(con_1_3, 0, 0)  # Направление аавтомобиля есть касательная к окружности
+
+        con_1_4 = lambda g: g[2]
+        nlc_1_4 = optimize.NonlinearConstraint(con_1_4, R, np.inf)
+        # Еще раз проверить!!!!!!!!!!! Нужно чтобы для всех левых он дал больше  R а для остальны
+
+        con_1_5 = lambda g: (np.linalg.norm(c_l - np.array([g[0], g[1]]), axis=1) - g[2])
+        nlc_1_5 = optimize.NonlinearConstraint(con_1_5, 0, np.inf)
+
+        con_1_6 = lambda g: (np.linalg.norm(c_r - np.array([g[0], g[1]]), axis=1) - g[2])
+        nlc_1_6 = optimize.NonlinearConstraint(con_1_6,-np.inf, 0)
+
+        con_2_5 = lambda g: (np.linalg.norm(c_l - np.array([g[0], g[1]]), axis=1) - g[2])
+        nlc_2_5 = optimize.NonlinearConstraint(con_2_5, -np.inf, 0)
+
+        con_2_6 = lambda g: (np.linalg.norm(c_r - np.array([g[0], g[1]]), axis=1) - g[2])
+        nlc_2_6 = optimize.NonlinearConstraint(con_2_6, 0, np.inf)
+
+        v3_1 = lambda g: objective(c_l, c_r, g)
+        v3_2 = lambda g: objective(c_l, c_r, g)
+
+        result_3_1 = optimize.minimize(v3_1, [0,0,0],
+                                       constraints=(nlc_1_1,nlc_1_3, nlc_1_4, nlc_1_5, nlc_1_6))
+        result_3_2 = optimize.minimize(v3_2, [0,0,0],
+                                       constraints=(nlc_1_1, nlc_1_3, nlc_1_4, nlc_2_5, nlc_2_6))
+        direct = -1
+        if result_3_1.success:
+            if result_3_2.success:
+                if result_3_1.fun < result_3_2.fun:
+                    a, b, r = result_3_1.x
+                    direct = direct * (1)
+                else:
+                    a, b, r = result_3_2.x
+                    direct = direct * (-1)
+            else:
+                a, b, r = result_3_1.x
+                direct = direct * (1)
+        else:
+            a, b, r = result_3_2.x
+            direct = direct*(-1)
+        return  r, direct
+
+    def rotate_point(self,cx, cy, angle, pp):
+        import math
+        s = math.sin(angle)
+        c = math.cos(angle)
+        p = pp.copy()
+        # translate point back to origin:
+        p[0] -= cx
+        p[1] -= cy
+
+        # rotate point
+        xnew = p[0] * c - p[1] * s
+        ynew = p[0] * s + p[1] * c
+
+        p[0] = xnew + cx
+        p[1] = ynew + cy
+        return p
     def Control_Arc(self):
         # Нужны локлаьные координаты!!!
-        cones_left_in_arc, cones_right_in_arc = self.get_cone_arc()
+        cones_right_in, cones_left_in = self.get_cone(self.lidar_R)
         pos_a = self.client.simGetVehiclePose().position.to_numpy_array()[0:2]
-        cones_left_in_arc =cones_left_in_arc -  pos_a
-        cones_right_in_arc = cones_right_in_arc - pos_a
-
-        from scipy.optimize import minimize
-        # TODO построить график
-        # Веткоризовать
-
-        # № Диапозон указать
-        # TODO  две задачи оптимизации при +-r у одноо полоиждтельный и другой отрицательй (уже не надо скоорее  всего)
-        # TODO  Не учитвать те которые не в угле обзоре
-        # График
-        # Добавить штраф? 1/r
-        pnts = np.concatenate([cones_left_in_arc, cones_right_in_arc])
-        f = lambda r: self.objective(pnts, r)
-        self.objective_func = f
-        result = minimize(f, [0], method='nelder-mead')
-        self.r0 = result.x
-        s = np.arctan(1 / (result.x))
-        print(f"Оптимальный радиус поворота {result.x}")
+        orientation = self.client.getCarState().kinematics_estimated.orientation
+        pitch, roll, yaw = airsim.to_eularian_angles(orientation)
+        cones_left_in =cones_left_in -  pos_a
+        cones_right_in = cones_right_in - pos_a
+        new_x = np.cos(float(yaw))
+        new_y = np.sin(float(yaw))
+        angle = -yaw
+        cones_left_in_rot = np.array([self.rotate_point(0, 0, angle, point) for point in cones_left_in])
+        cones_right_in_rot = np.array([self.rotate_point(0, 0, angle, point) for point in cones_right_in])
+        c_l  = cones_left_in_rot.copy()
+        c_r = cones_right_in_rot.copy()
+        #if flag == 1 or flag == 2:
+            # cond = lambda  c: np.arccos(c[:,0]/np.linalg.norm(c,axis=1))
+            # ind_l = np.where((cond(c_l)>0) & (cond(c_l)<np.pi/2))
+        ind_l = np.where(c_l[:, 0] > 0)
+            #c_l = c_l[ind_l]
+            # ind_r = np.where((c_r)>-3*np.pi/2) & (cond(c_r)<0))
+        ind_r = np.where(c_r[:, 0] > 0)
+            #c_r = c_r[ind_r]
+        #if flag == 3 or flag == 4:
+            # cond = lambda  c: np.arccos(c[:,0]/np.linalg.norm(c,axis=1))
+            # ind_l = np.where((cond(c_l)>np.pi/2) & (cond(c_l)<np.pi))
+        #    ind_l = np.where(c_l[:, 0] < 0)
+            #c_l = c_l[ind_l]
+            #ind_r = np.where((cond(c_r)<np.pi) & (cond(c_r)>-3*np.pi/2))
+        #    ind_r = np.where(c_r[:,0] < 0)
+            #c_r = c_r[ind_r]
+        #if np.degrees(-angle) > np.degrees(np.pi - angle):
+        #    cond = lambda c: np.arccos(c[:, 0] / np.linalg.norm(c, axis=1))
+        #    ind_l = np.where((cond(c_l) < 3 * np.pi / 2) & (cond(c_l) > np.pi / 2))
+        #    c_l = c_l[ind_l]
+        #    ind_r = np.where((cond(c_r) < 3 * np.pi / 2) & (cond(c_r) > np.pi / 2))
+        #    c_r = c_r[ind_r]
+        #    print("-angle")
+        #else:
+        #    cond = lambda c: np.arccos(c[:, 0] / np.linalg.norm(c, axis=1))
+        #    ind_l = np.where((cond(c_l) > -3 * np.pi / 2) & (cond(c_l) < np.pi / 2))
+        #    c_l = c_l[ind_l]
+        #    ind_r = np.where((cond(c_r) > -3 * np.pi / 2) & (cond(c_r) < np.pi / 2))
+        #    c_r = c_r[ind_r]
+        #    print("pi-angle")
+        # cond = lambda c: np.arccos(c[:, 0] / np.linalg.norm(c, axis=1))
+        # ind_l = np.where((cond(c_l) > -3 * np.pi / 2) & (cond(c_l) < np.pi / 2))
+        # c_l = c_l[ind_l]
+        # ind_r = np.where((cond(c_r) > -3 * np.pi / 2) & (cond(c_r) < np.pi / 2))
+        # c_r = c_r[ind_r]
+        c_ =np.concatenate([c_l,c_r],axis=0)
+        r,d = self.optimization_my(yaw,c_l,c_r)
+        a = 15.08905543
+        b = 20.14829197
+        if d>0:
+            s = self.steering_func_p(r)
+            print("+")
+        else:
+            s = self.steering_func_n(r)
+            print("-")
+        #if r>80:
+        #    s  = 0
+        print(f"Оптимальный радиус поворота {r}")
         print(f"Оптимальный угол поворота в AirSim {s}")
-        return s
+
+        # DrawLine Airsim!!!!
+        return s,r
 
     def get_cone(self, R):
         cones_left_in = []

@@ -131,8 +131,6 @@ path_model = ROOT_DIR  # "D:/Users/user/PycharmProjects/Course/"
 # Параметры симулятора
 delta = 0.01
 # Ограничим выделяемую память
-
-is_collect_data = True
 # connect to the AirSim simulator
 client = airsim.CarClient()
 client.confirmConnection()
@@ -140,7 +138,8 @@ is_simple_CNN_driver = False
 is_PID_driver = False
 is_simple_driver = False
 is_real_plot = False
-is_arc_drive = False
+is_arc_drive = True
+is_collect_data = False
 if is_simple_driver or is_simple_CNN_driver or is_arc_drive:
     client.enableApiControl(True)
 else:
@@ -166,7 +165,7 @@ if is_simple_CNN_driver:
     SimpleCNN.model_CNN_init(path_model + "\SimpleCNN")
     # Для получнеия ошибок
     time.sleep(2)
-if is_simple_driver or is_collect_data:
+if is_simple_driver or is_collect_data or is_simple_CNN_driver:
     arcDriver = ArcDriver(client)
 # TODO Поменять для отчета имена  SimplePID{CNN} для надежности
 if is_PID_driver:
@@ -196,7 +195,7 @@ kp_velocity = 0
 kd_velocity = 0
 ki_velocity = 0
 erros_velocity_i = []
-max_velocity = 10
+max_velocity = 8
 min_velocity = 5
 v0 = 0
 e0_velocity = min_velocity
@@ -241,7 +240,7 @@ def move_on_true_input(true_input, client, car_controls, delta):
         SimMove(th, st, client, car_controls, d)
     # Остановиться
     # keyboard.send("R")
-    SimMove(0.5, 0, client, car_controls, delta)
+    SimMove(0.2, 0, client, car_controls, delta)
 
 
 # true_input = read_true_input(path_project, "true_input.csv")
@@ -249,11 +248,11 @@ def move_on_true_input(true_input, client, car_controls, delta):
 time.sleep(1)
 # keyboard.send("R")
 start_data = pd.read_csv("start_data.csv")
-position = airsim.Vector3r(start_data.X[0], start_data.Y[0] / 100, -1)
-heading = airsim.utils.to_quaternion(0, 0, 0)
+position = airsim.Vector3r(start_data.X[0]/ 100, start_data.Y[0] / 100, -1)
+heading = airsim.utils.to_quaternion(0, 0, - 1.5)
 pose = airsim.Pose(position, heading)
 client.simSetVehiclePose(pose, True)
-SimMove(0.2, 0, client, car_controls, 1)
+SimMove(0.5, 0, client, car_controls, 0.05)
 # TODO  Полность почистить код и заново снять эталонные данные
 if is_collect_data:
     print("collect_data")
@@ -350,24 +349,34 @@ def write_to_file_sync(data_file, str):
     data_file.flush()
     os.fsync(data_file.fileno())
 
-
-ping_CNN_file = open(f"ping_CNN.dat", 'w')
-ping_PID_file = open(f"ping_PID.dat", 'w')
-ping_Arc_Driver_file = open(f"ping_Arc_Driver.dat", 'w')
-cone_errors_CNN = open(f"error_cone_CNN.dat", 'w')
-correct_cone_errors_CNN = open(f"correct_error_cone_CNN.dat", 'w')
+if is_simple_CNN_driver:
+    ping_CNN_file = open(f"ping_CNN.dat", 'w')
+    cone_errors_CNN = open(f"error_cone_CNN.dat", 'w')
+    lmin_errors_CNN = open(f"lmin_error_CNN.dat", 'w')
+    correct_cone_errors_CNN = open(f"correct_error_cone_CNN.dat", 'w')
+    vehicle_path_CNN = open(f"vehicle_path_CNN.dat", 'w')
+    vehicle_path_CNN.write("x y z pitch roll yaw\n")
+if is_arc_drive:
+    ping_arc = open(f"ping_arc.dat", 'w')
+    arcs = open(f"arcs.dat",'w')
+    arcs.write("r y z pitch roll yaw\n")
+    cone_errors_arc = open(f"error_cone_arc.dat", 'w')
+    lmin_errors_arc = open(f"lmin_error_arc.dat", 'w')
+    correct_cone_errors_arc = open(f"correct_error_cone_arc.dat", 'w')
+    vehicle_path_arc = open(f"vehicle_path_arc.dat", 'w')
+    vehicle_path_arc.write("x y z pitch roll yaw r steering\n")
+if is_PID_driver:
+    ping_PID_file = open(f"ping_PID.dat", 'w')
 # ht_CNN = open(f"ht_CNN.dat", 'w')
-lmin_errors_CNN = open(f"lmin_error_CNN.dat", 'w')
 cone_left, cone_right = arcDriver.get_world_cone()
 world_cone_left = open(f"world_cone_left.dat", 'w')
 world_cone_right = open(f"world_cone_right.dat", 'w')
-vehicle_path = open(f"vehicle_path.dat", 'w')
 for c in cone_left:
-    x,y = c
-    write_to_file_sync(world_cone_left,f"{x} {y}\n")
+    x, y = c
+    write_to_file_sync(world_cone_left, f"{x} {y}\n")
 for c in cone_right:
     x, y = c
-    write_to_file_sync(world_cone_right,f"{x} {y}\n")
+    write_to_file_sync(world_cone_right, f"{x} {y}\n")
 
 
 def write_to_file_sync(data_file, str):
@@ -382,12 +391,12 @@ while True and not is_real_plot:
     # move_on_true_input(true_input, client, car_controls, 0.05)
     # get camera images from the car
     # Сбор данных
-    #if is_collect_data:
-        # Сбор данных с камеры
+    # if is_collect_data:
+    # Сбор данных с камеры
     #    if client.isRecording():
     #        get_sim_image(client)
     #        lidarTest.record()
-            # time.sleep(DELTA_RECORDING)
+    # time.sleep(DELTA_RECORDING)
     if is_collect_data:
         start_time = time.time()
         ping = time.time() - start_time
@@ -398,8 +407,9 @@ while True and not is_real_plot:
         correct_e_cone = arcDriver.get_correct_cone_errors()
         write_to_file_sync(cone_errors_CNN, f"{e_cone}\n")
         write_to_file_sync(correct_cone_errors_CNN, f"{correct_e_cone}\n")
-        pose = client.simGetVehiclePose().position.to_numpy_array()[0:2]
-        write_to_file_sync(vehicle_path, f"{pose[0]} {pose[1]}\n")
+        pose = client.simGetVehiclePose().position.to_numpy_array()[0:3]
+        pitch, roll, yaw = airsim.to_eularian_angles(client.simGetVehiclePose().orientation)
+        write_to_file_sync(vehicle_path_CNN, f"{pose[0]} {pose[1]} {pose[2]} {pitch} {roll} {yaw}\n")
 
     if is_PID_driver:
         start_time = time.time()
@@ -408,16 +418,25 @@ while True and not is_real_plot:
             _, throtle, _ = A_velocity(0.1, 1, 0, client, PID_Velocity)
         ping = time.time() - start_time
         ping_PID_file.write(f"{ping}\n")
-        SimMove(throtle, steering, client, car_controls, 0.01)
+        SimMove(0.5, steering, client, car_controls, 0.001)
     if is_arc_drive:
         start_time = time.time()
-        steering = arcDriver.Control_Arc()
+        steering,r = arcDriver.Control_Arc()
         if is_velocity_control:
             _, throtle, _ = A_velocity(0.1, 1, 0, client, PID_Velocity)
         ping = time.time() - start_time
-        ping_Arc_Driver_file.write(f"{ping}\n")
-
-        SimMove(throtle, steering[0], client, car_controls, 0.01)
+        ping_arc.write(f"{ping}\n")
+        h_error = arcDriver.get_L_mint()
+        write_to_file_sync(lmin_errors_arc, f"{h_error}\n")
+        # ping_CNN_file.write(f"{ping}\n")
+        e_cone = arcDriver.get_cone_errors()
+        correct_e_cone = arcDriver.get_correct_cone_errors()
+        write_to_file_sync(cone_errors_arc, f"{e_cone}\n")
+        write_to_file_sync(correct_cone_errors_arc, f"{correct_e_cone}\n")
+        pose = client.simGetVehiclePose().position.to_numpy_array()
+        pitch,roll,yaw  = airsim.to_eularian_angles(client.getImuData().orientation)
+        write_to_file_sync(vehicle_path_arc, f"{pose[0]} {pose[1]} {pose[2]} {pitch} {roll} {yaw} {r} {steering}\n")
+        SimMove(0.5, steering, client, car_controls, 0.001)
     if is_simple_CNN_driver:
 
         start_time = time.time()
@@ -435,13 +454,13 @@ while True and not is_real_plot:
         write_to_file_sync(cone_errors_CNN, f"{e_cone}\n")
         write_to_file_sync(correct_cone_errors_CNN, f"{correct_e_cone}\n")
         pose = client.simGetVehiclePose().position.to_numpy_array()[0:2]
-        write_to_file_sync(vehicle_path, f"{pose[0]} {pose[1]}\n")
+        write_to_file_sync(vehicle_path_CNN, f"{pose[0]} {pose[1]}\n")
         # cone_errors_CNN.write(f"{e_cone}\n")
 
         print("errors=", e_cone)
         # write_to_file_sync(ping_CNN_file,f"{ping}")
         # print("- -- %s seconds ---" % ping)
-        SimMove(throtle, int(steering), client, car_controls, 0.01)
+        SimMove(throtle, int(steering), client, car_controls, 0.001)
 
     if is_simple_driver and not client.simIsPause():
         start_time = time.time()
@@ -458,7 +477,6 @@ while True and not is_real_plot:
         steering = simpleDriver.Control_Simple(img, lidarTest.get_lidar_data()[1].T)
         print("- -- %s seconds ---" % (time.time() - start_time))
         throtle = 0.5
-        SimMove(throtle, -int(steering), client, car_controls, 0.1)
-
+        SimMove(throtle, -int(steering), client, car_controls, 0.2)
     # get camera images from the car
     # airsim.write_file('py1.png', responses[0].image_data_float)

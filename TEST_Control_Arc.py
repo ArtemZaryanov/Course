@@ -13,4 +13,5 @@ heading = airsim.utils.to_quaternion(0, 0, 0)
 pose = airsim.Pose(position, heading)
 client.simSetVehiclePose(pose, True)
 time.sleep(2)
-print(client.isApiControlEnabled())
+theta = np.linspace(0,2*np.pi)
+r = 10
