@@ -14,6 +14,7 @@ import cv2
 from Driver import DriverCNN
 from Driver import DriverPID
 from Driver import ArcDriver
+from Driver import ClothDriver
 from Driver import TrackType
 from Driver import SimpleDriver
 from record_data import lidar_car_data as lidar
@@ -138,9 +139,10 @@ is_simple_CNN_driver = False
 is_PID_driver = False
 is_simple_driver = False
 is_real_plot = False
-is_arc_drive = True
+is_arc_driver = False
+is_cloth_driver = True
 is_collect_data = False
-if is_simple_driver or is_simple_CNN_driver or is_arc_drive:
+if is_simple_driver or is_simple_CNN_driver or is_arc_driver or is_cloth_driver:
     client.enableApiControl(True)
 else:
     client.enableApiControl(False)
@@ -165,14 +167,17 @@ if is_simple_CNN_driver:
     SimpleCNN.model_CNN_init(path_model + "\SimpleCNN")
     # Для получнеия ошибок
     time.sleep(2)
-if is_simple_driver or is_collect_data or is_simple_CNN_driver:
+if is_simple_driver or is_collect_data or is_simple_CNN_driver or is_cloth_driver:
     arcDriver = ArcDriver(client)
 # TODO Поменять для отчета имена  SimplePID{CNN} для надежности
 if is_PID_driver:
     # Поменять потом!
     SimplePID = DriverPID(TrackType.Standard, 0.1, 0.003, 0.002, 0.1, client)
-if is_arc_drive:
+if is_arc_driver:
     arcDriver = ArcDriver(client)
+if is_cloth_driver:
+    clothDriver = ClothDriver(client)
+    clothDriver.set_steering_0(0.1)
 if is_simple_driver:
     X = [880, 380, 380, 880]
     Y = [-80, -10, 10, 100]
@@ -356,7 +361,7 @@ if is_simple_CNN_driver:
     correct_cone_errors_CNN = open(f"correct_error_cone_CNN.dat", 'w')
     vehicle_path_CNN = open(f"vehicle_path_CNN.dat", 'w')
     vehicle_path_CNN.write("x y z pitch roll yaw\n")
-if is_arc_drive:
+if is_arc_driver:
     ping_arc = open(f"ping_arc.dat", 'w')
     arcs = open(f"arcs.dat",'w')
     arcs.write("r y z pitch roll yaw\n")
@@ -365,6 +370,10 @@ if is_arc_drive:
     correct_cone_errors_arc = open(f"correct_error_cone_arc.dat", 'w')
     vehicle_path_arc = open(f"vehicle_path_arc.dat", 'w')
     vehicle_path_arc.write("x y z pitch roll yaw r steering\n")
+if is_cloth_driver:
+    ping_cloth = open(f"ping_cloth.dat", 'w')
+    vehicle_path_cloth = open(f"vehicle_path_cloth.dat", 'w')
+    vehicle_path_cloth.write("x y z pitch roll yaw steering kA kB S\n")
 if is_PID_driver:
     ping_PID_file = open(f"ping_PID.dat", 'w')
 # ht_CNN = open(f"ht_CNN.dat", 'w')
@@ -419,7 +428,7 @@ while True and not is_real_plot:
         ping = time.time() - start_time
         ping_PID_file.write(f"{ping}\n")
         SimMove(0.5, steering, client, car_controls, 0.001)
-    if is_arc_drive:
+    if is_arc_driver:
         start_time = time.time()
         steering,r = arcDriver.Control_Arc()
         if is_velocity_control:
@@ -435,7 +444,25 @@ while True and not is_real_plot:
         write_to_file_sync(correct_cone_errors_arc, f"{correct_e_cone}\n")
         pose = client.simGetVehiclePose().position.to_numpy_array()
         pitch,roll,yaw  = airsim.to_eularian_angles(client.getImuData().orientation)
-        write_to_file_sync(vehicle_path_arc, f"{pose[0]} {pose[1]} {pose[2]} {pitch} {roll} {yaw} {r} {steering}\n")
+        write_to_file_sync(vehicle_path_arc, f"{pose[0]} {pose[1]} {pose[2]} "
+                                             f"{pitch} {roll} {yaw} "
+                                             f"{r} "
+                                             f"{steering}\n")
+        SimMove(0.5, steering, client, car_controls, 0.001)
+    if is_cloth_driver:
+        start_time = time.time()
+        steering,kB,kA,c_lenght = clothDriver.Control_cloth()
+        clothDriver.set_steering_0(steering)
+        if is_velocity_control:
+            _, throtle,_ = A_velocity(0.1,1,0,client,PID_Velocity)
+        ping = time.time() - start_time
+        ping_cloth.write(f"{ping}\n")
+        pose = client.simGetVehiclePose().position.to_numpy_array()
+        pitch, roll, yaw = airsim.to_eularian_angles(client.getImuData().orientation)
+        write_to_file_sync(vehicle_path_cloth, f"{pose[0]} {pose[1]} {pose[2]} "
+                                             f"{pitch} {roll} {yaw} "
+                                             f"{steering} "
+                                             f"{kA} {kB} {c_lenght}\n")
         SimMove(0.5, steering, client, car_controls, 0.001)
     if is_simple_CNN_driver:
 

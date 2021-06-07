@@ -12,7 +12,10 @@ from CameraProcessing import LidarDataProccesing
 from CameraProcessing import PinholeCamera
 from CurveController import CurveControl
 from CurveController import Controller
-
+from scipy import interpolate
+from scipy import optimize
+from scipy import integrate
+from scipy import special
 
 def getRandomNumber():
     return 4
@@ -106,7 +109,7 @@ class DriverCNN:
 
 class ArcDriver:
     # Надо получить сразу все конусы среды
-    def __init__(self, client,steering_func = None):
+    def __init__(self, client, steering_func=None):
         self.client = client
         self.cones_left = None
         self.cones_right = None
@@ -114,16 +117,15 @@ class ArcDriver:
         self.get_all_cone()
         self.a = 7.73240547
         self.b = -4.09307997
-        self.steering_func_p = lambda r:np.arctan(self.a/(self.b/2 + r))/(np.pi/2)
+        self.steering_func_p = lambda r: np.arctan(self.a / (self.b / 2 + r)) / (np.pi / 2)
         self.steering_func_n = lambda r: np.arctan(self.a / (self.b / 2 + r)) / (np.pi / 2)
         self.lidar_R = 16
-        self.x0 = [0,0,0]
-
+        self.x0 = [0, 0, 0]
 
     # Эммуляция работы Лидара. Потом убрать.
     # Находим все конусы в радиусе R от автомобиля
     def get_world_cone(self):
-        return self.cones_left,self.cones_right
+        return self.cones_left, self.cones_right
 
     def get_all_cone(self):
         b_l = lambda n: self.client.simGetObjectPose(n).position.to_numpy_array()[0:2]
@@ -145,12 +147,14 @@ class ArcDriver:
         cones_right_in_arc = self.find_in_contour(
             cones_right_in_circle, arc_pnts, R, np.radians(FOV), pos_a[0], pos_a[1], yaw)
         return cones_left_in_arc, cones_right_in_arc
+
     def get_L_mint(self):
         cones_left_in_arc, cones_right_in_arc = self.get_cone(16)
         pos_a = self.client.simGetVehiclePose().position.to_numpy_array()[0:2]
         cones_in_arc = np.concatenate([cones_left_in_arc, cones_right_in_arc], axis=0)
         L_min = np.max((np.linalg.norm(cones_in_arc - pos_a, axis=1)) ** 2, axis=0)
         return L_min
+
     def get_h_errors(self):
         cones_left_in_arc, cones_right_in_arc = self.get_cone(16)
         pos_a = self.client.simGetVehiclePose().position.to_numpy_array()[0:2]
@@ -164,7 +168,7 @@ class ArcDriver:
         pos_a = self.client.simGetVehiclePose().position.to_numpy_array()[0:2]
         cones_in_arc = np.concatenate([cones_left_in_arc, cones_right_in_arc], axis=0)
         rr = np.linalg.norm(cones_in_arc - pos_a, axis=1)
-        correct_cone_errors = np.mean((rr/(self.lidar_R - rr)), axis=0)
+        correct_cone_errors = np.mean((rr / (self.lidar_R - rr)), axis=0)
         return correct_cone_errors
 
     def get_cone_errors(self):
@@ -172,10 +176,10 @@ class ArcDriver:
         pos_a = self.client.simGetVehiclePose().position.to_numpy_array()[0:2]
         cones_in_arc = np.concatenate([cones_left_in_arc, cones_right_in_arc], axis=0)
 
-        cone_errors = np.mean((np.linalg.norm(cones_in_arc - pos_a, axis=1)) ** 1/2, axis=0)
+        cone_errors = np.mean((np.linalg.norm(cones_in_arc - pos_a, axis=1)) ** 1 / 2, axis=0)
         return cone_errors
 
-    def rotatePoint(self,centerPoint, point, angle):
+    def rotatePoint(self, centerPoint, point, angle):
 
         """Rotates a point around another centerPoint. Angle is in degrees.
         Rotation is counter-clockwise"""
@@ -205,11 +209,11 @@ class ArcDriver:
         def near_fine(d):
             # if d<0:
             #    raise ValueError("Wrong d=%f"%(d))
-            return 1 * np.exp(-2*d * d / 5.5)
+            return 1 * np.exp(-2 * d * d / 5.5)
 
-        #def near_fine(d):
-            # if d<0:
-            #    raise ValueError("Wrong d=%f"%(d))
+        # def near_fine(d):
+        # if d<0:
+        #    raise ValueError("Wrong d=%f"%(d))
         #    return 1 * np.exp(-d * d / 9 * 1)
 
         def distance_my(c_l, c_r, r):
@@ -218,14 +222,14 @@ class ArcDriver:
                 for cc_ in c_l:
                     d1 = np.hypot(cc_[0], cc_[1] - r) - r
                     if d1 > 0:
-                        #if plot: plt.scatter(cc_[0], cc_[1])
+                        # if plot: plt.scatter(cc_[0], cc_[1])
                         f += d1
                     # else:
                     f += near_fine(-d1)
                 for cc_ in c_r:
                     d2 = np.hypot(cc_[0], cc_[1] - r) - r
                     if d2 < 0:
-                        #if plot: plt.scatter(cc_[0], cc_[1])
+                        # if plot: plt.scatter(cc_[0], cc_[1])
                         f += -d2
                     #            else:
                     #                f+=near_fine(d2)
@@ -234,7 +238,7 @@ class ArcDriver:
                 for cc_ in c_l:
                     d1 = np.hypot(cc_[0], cc_[1] - r) + r
                     if d1 < 0:
-                        #if plot: plt.scatter(cc_[0], cc_[1])
+                        # if plot: plt.scatter(cc_[0], cc_[1])
                         f += -d1
                     # lse:
                     #   f+=near_fine(d1)
@@ -242,7 +246,7 @@ class ArcDriver:
                 for cc_ in c_r:
                     d2 = np.hypot(cc_[0], cc_[1] - r) + r
                     if d2 > 0:
-                        #if plot: plt.scatter(cc_[0], cc_[1])
+                        # if plot: plt.scatter(cc_[0], cc_[1])
                         f += d2
                     # lse:
                     #   f+=near_fine(-d2)
@@ -257,16 +261,18 @@ class ArcDriver:
             return f
 
         v_my = lambda r: distance_my(c_l, c_r, r)
-        result = optimize.minimize(v_my,[0],
-                            method ='Nelder-mead',options={'xatol':10**(-4),'initial_simplex':np.array([[-100],[100]])})
+        result = optimize.minimize(v_my, [0],
+                                   method='Nelder-mead',
+                                   options={'xatol': 10 ** (-4), 'initial_simplex': np.array([[-100], [100]])})
         r = result.x
         d = 1
-        if r>0:
-            d=1
+        if r > 0:
+            d = 1
         else:
-            d=-1
+            d = -1
 
-        return r[0],d
+        return r[0], d
+
     def optimization_raz(self, yaw, c_l, c_r):
         from scipy import optimize
         def distance_razim_1(c_l, c_r, rr):
@@ -279,14 +285,17 @@ class ArcDriver:
                 w = 1 / (1 + np.exp((cc_[0] ** 2 + cc_[1] ** 2 - 5) / 2))
                 f = f + (((r - cc_[0]) ** 2 + cc_[1] ** 2 + r ** 2)) * 1
             return f
+
         def distance_razim_1__(c_l, c_r, r):
             f = 0
             for cc_ in c_l:
                 f = f + (np.linalg.norm(
-                    cc_ - np.array([r, 0])) ** 2 - r ** 2)/np.linalg.norm(cc_)**2  # *np.exp(-np.linalg.norm(cc_ - np.array([0,r]))**4)
+                    cc_ - np.array([r, 0])) ** 2 - r ** 2) / np.linalg.norm(
+                    cc_) ** 2  # *np.exp(-np.linalg.norm(cc_ - np.array([0,r]))**4)
             for cc_ in c_r:
                 f = f + (np.linalg.norm(
-                    cc_ - np.array([r, 0])) ** 2 - r ** 2)/np.linalg.norm(cc_)**2  # *np.exp(-np.linalg.norm(cc_ - np.array([0,r]))**4)
+                    cc_ - np.array([r, 0])) ** 2 - r ** 2) / np.linalg.norm(
+                    cc_) ** 2  # *np.exp(-np.linalg.norm(cc_ - np.array([0,r]))**4)
             return f
 
         v1 = lambda r: distance_razim_1(c_l, c_r, r)
@@ -300,14 +309,17 @@ class ArcDriver:
                 w = 1 / (1 + np.exp((cc_[0] ** 2 + cc_[1] ** 2 - 5) / 2))
                 f = f + (((r - cc_[1]) ** 2 + cc_[0] ** 2 + r ** 2)) * 1
             return f
+
         def distance_razim_2__(c_l, c_r, r):
             f = 0
             for cc_ in c_l:
                 f = f + ((np.linalg.norm(
-                    cc_ - np.array([0, r]))) ** 2 - r ** 2)/np.linalg.norm(cc_)**2  # *np.exp(-np.linalg.norm(cc_ - np.array([0,r]))**4)
+                    cc_ - np.array([0, r]))) ** 2 - r ** 2) / np.linalg.norm(
+                    cc_) ** 2  # *np.exp(-np.linalg.norm(cc_ - np.array([0,r]))**4)
             for cc_ in c_r:
                 f = f + (np.linalg.norm(
-                    cc_ - np.array([0, r])) ** 2 - r ** 2)/np.linalg.norm(cc_)**2  # *np.exp(-np.linalg.norm(cc_ - np.array([0,r]))**4)
+                    cc_ - np.array([0, r])) ** 2 - r ** 2) / np.linalg.norm(
+                    cc_) ** 2  # *np.exp(-np.linalg.norm(cc_ - np.array([0,r]))**4)
             return f
 
         v2 = lambda r: distance_razim_2(c_l, c_r, r)
@@ -319,21 +331,23 @@ class ArcDriver:
         else:
             r = result_2.x
         d = 1
-        if r<0:
-            d = d*(-1)
+        if r < 0:
+            d = d * (-1)
         else:
-            d = d*(1)
-        return r[0],d
-    def optimization(self,yaw,c_l,c_r):
+            d = d * (1)
+        return r[0], d
+
+    def optimization(self, yaw, c_l, c_r):
         from scipy import optimize
         def objective(c_l, c_r, g):
             a, b, r = g
             f = 0
             for cc_ in c_l:
-                f = f + ((np.linalg.norm(cc_ - np.array([a, b]))) ** 2 - r ** 2)#*np.linalg.norm(cc_)
+                f = f + ((np.linalg.norm(cc_ - np.array([a, b]))) ** 2 - r ** 2)  # *np.linalg.norm(cc_)
             for cc_ in c_r:
-                f = f + (np.linalg.norm(cc_ - np.array([a, b])) ** 2 - r ** 2) #*np.linalg.norm(cc_)
+                f = f + (np.linalg.norm(cc_ - np.array([a, b])) ** 2 - r ** 2)  # *np.linalg.norm(cc_)
             return f
+
         R = self.lidar_R
         con_1_1 = lambda g: g[0] ** 2 + g[1] ** 2 - g[2] ** 2  # Чтобы проходило через (0,0)
         nlc_1_1 = optimize.NonlinearConstraint(con_1_1, 0, 0)
@@ -353,7 +367,7 @@ class ArcDriver:
         nlc_1_5 = optimize.NonlinearConstraint(con_1_5, 0, np.inf)
 
         con_1_6 = lambda g: (np.linalg.norm(c_r - np.array([g[0], g[1]]), axis=1) - g[2])
-        nlc_1_6 = optimize.NonlinearConstraint(con_1_6,-np.inf, 0)
+        nlc_1_6 = optimize.NonlinearConstraint(con_1_6, -np.inf, 0)
 
         con_2_5 = lambda g: (np.linalg.norm(c_l - np.array([g[0], g[1]]), axis=1) - g[2])
         nlc_2_5 = optimize.NonlinearConstraint(con_2_5, -np.inf, 0)
@@ -364,9 +378,9 @@ class ArcDriver:
         v3_1 = lambda g: objective(c_l, c_r, g)
         v3_2 = lambda g: objective(c_l, c_r, g)
 
-        result_3_1 = optimize.minimize(v3_1, [0,0,0],
-                                       constraints=(nlc_1_1,nlc_1_3, nlc_1_4, nlc_1_5, nlc_1_6))
-        result_3_2 = optimize.minimize(v3_2, [0,0,0],
+        result_3_1 = optimize.minimize(v3_1, [0, 0, 0],
+                                       constraints=(nlc_1_1, nlc_1_3, nlc_1_4, nlc_1_5, nlc_1_6))
+        result_3_2 = optimize.minimize(v3_2, [0, 0, 0],
                                        constraints=(nlc_1_1, nlc_1_3, nlc_1_4, nlc_2_5, nlc_2_6))
         direct = -1
         if result_3_1.success:
@@ -382,10 +396,10 @@ class ArcDriver:
                 direct = direct * (1)
         else:
             a, b, r = result_3_2.x
-            direct = direct*(-1)
-        return  r, direct
+            direct = direct * (-1)
+        return r, direct
 
-    def rotate_point(self,cx, cy, angle, pp):
+    def rotate_point(self, cx, cy, angle, pp):
         import math
         s = math.sin(angle)
         c = math.cos(angle)
@@ -401,45 +415,46 @@ class ArcDriver:
         p[0] = xnew + cx
         p[1] = ynew + cy
         return p
+
     def Control_Arc(self):
         # Нужны локлаьные координаты!!!
         cones_right_in, cones_left_in = self.get_cone(self.lidar_R)
         pos_a = self.client.simGetVehiclePose().position.to_numpy_array()[0:2]
         orientation = self.client.getCarState().kinematics_estimated.orientation
         pitch, roll, yaw = airsim.to_eularian_angles(orientation)
-        cones_left_in =cones_left_in -  pos_a
+        cones_left_in = cones_left_in - pos_a
         cones_right_in = cones_right_in - pos_a
         new_x = np.cos(float(yaw))
         new_y = np.sin(float(yaw))
         angle = -yaw
         cones_left_in_rot = np.array([self.rotate_point(0, 0, angle, point) for point in cones_left_in])
         cones_right_in_rot = np.array([self.rotate_point(0, 0, angle, point) for point in cones_right_in])
-        c_l  = cones_left_in_rot.copy()
+        c_l = cones_left_in_rot.copy()
         c_r = cones_right_in_rot.copy()
-        #if flag == 1 or flag == 2:
-            # cond = lambda  c: np.arccos(c[:,0]/np.linalg.norm(c,axis=1))
-            # ind_l = np.where((cond(c_l)>0) & (cond(c_l)<np.pi/2))
+        # if flag == 1 or flag == 2:
+        # cond = lambda  c: np.arccos(c[:,0]/np.linalg.norm(c,axis=1))
+        # ind_l = np.where((cond(c_l)>0) & (cond(c_l)<np.pi/2))
         ind_l = np.where(c_l[:, 0] > 0)
-            #c_l = c_l[ind_l]
-            # ind_r = np.where((c_r)>-3*np.pi/2) & (cond(c_r)<0))
+        # c_l = c_l[ind_l]
+        # ind_r = np.where((c_r)>-3*np.pi/2) & (cond(c_r)<0))
         ind_r = np.where(c_r[:, 0] > 0)
-            #c_r = c_r[ind_r]
-        #if flag == 3 or flag == 4:
-            # cond = lambda  c: np.arccos(c[:,0]/np.linalg.norm(c,axis=1))
-            # ind_l = np.where((cond(c_l)>np.pi/2) & (cond(c_l)<np.pi))
+        # c_r = c_r[ind_r]
+        # if flag == 3 or flag == 4:
+        # cond = lambda  c: np.arccos(c[:,0]/np.linalg.norm(c,axis=1))
+        # ind_l = np.where((cond(c_l)>np.pi/2) & (cond(c_l)<np.pi))
         #    ind_l = np.where(c_l[:, 0] < 0)
-            #c_l = c_l[ind_l]
-            #ind_r = np.where((cond(c_r)<np.pi) & (cond(c_r)>-3*np.pi/2))
+        # c_l = c_l[ind_l]
+        # ind_r = np.where((cond(c_r)<np.pi) & (cond(c_r)>-3*np.pi/2))
         #    ind_r = np.where(c_r[:,0] < 0)
-            #c_r = c_r[ind_r]
-        #if np.degrees(-angle) > np.degrees(np.pi - angle):
+        # c_r = c_r[ind_r]
+        # if np.degrees(-angle) > np.degrees(np.pi - angle):
         #    cond = lambda c: np.arccos(c[:, 0] / np.linalg.norm(c, axis=1))
         #    ind_l = np.where((cond(c_l) < 3 * np.pi / 2) & (cond(c_l) > np.pi / 2))
         #    c_l = c_l[ind_l]
         #    ind_r = np.where((cond(c_r) < 3 * np.pi / 2) & (cond(c_r) > np.pi / 2))
         #    c_r = c_r[ind_r]
         #    print("-angle")
-        #else:
+        # else:
         #    cond = lambda c: np.arccos(c[:, 0] / np.linalg.norm(c, axis=1))
         #    ind_l = np.where((cond(c_l) > -3 * np.pi / 2) & (cond(c_l) < np.pi / 2))
         #    c_l = c_l[ind_l]
@@ -451,23 +466,23 @@ class ArcDriver:
         # c_l = c_l[ind_l]
         # ind_r = np.where((cond(c_r) > -3 * np.pi / 2) & (cond(c_r) < np.pi / 2))
         # c_r = c_r[ind_r]
-        c_ =np.concatenate([c_l,c_r],axis=0)
-        r,d = self.optimization_my(yaw,c_l,c_r)
+        c_ = np.concatenate([c_l, c_r], axis=0)
+        r, d = self.optimization_my(yaw, c_l, c_r)
         a = 15.08905543
         b = 20.14829197
-        if d>0:
+        if d > 0:
             s = self.steering_func_p(r)
             print("+")
         else:
             s = self.steering_func_n(r)
             print("-")
-        #if r>80:
+        # if r>80:
         #    s  = 0
         print(f"Оптимальный радиус поворота {r}")
         print(f"Оптимальный угол поворота в AirSim {s}")
 
         # DrawLine Airsim!!!!
-        return s,r
+        return s, r
 
     def get_cone(self, R):
         cones_left_in = []
@@ -476,6 +491,7 @@ class ArcDriver:
         cones_left_in = self.cones_left[np.where(np.linalg.norm(self.cones_left - pos_a, axis=1) < R)]
         cones_right_in = self.cones_right[np.where(np.linalg.norm(self.cones_right - pos_a, axis=1) < R)]
         return np.array(cones_left_in), np.array(cones_right_in)
+
     # получить точки дуги радиуса r с углом phi с углом alpha(в радианах) относительно OX в точке (x0,y0)
     def get_arc_pnts(self, r, phi, alpha, x0, y0, N=100):
         # начальная точка
@@ -512,6 +528,147 @@ class ArcDriver:
         return points_a
 
 
+class ClothDriver:
+    def __init__(self, client, steering_func=None):
+        self.client = client
+        self.cones_left = None
+        self.cones_right = None
+        self.r0 = 0
+        self.get_all_cone()
+        self.a = 7.73240547
+        self.b = -4.09307997
+        self.steering_0 = None
+        self.steering_func_p = lambda r: np.arctan(self.a / (self.b / 2 + r)) / (np.pi / 2)
+        self.steering_func_n = lambda r: np.arctan(self.a / (self.b / 2 + r)) / (np.pi / 2)
+        self.lidar_R = 16
+        self.c_lenght = 16
+        self.Lmin = 2
+        self.i = 0
+        self.is_drive = False
+        self.opt_radius = None
+
+    def set_steering_0(self,s):
+        self.steering_0 = s
+    def get_steering_0(self):
+        return self.steering_0
+
+    def rotate_point(self, cx, cy, angle, pp):
+        import math
+        s = math.sin(angle)
+        c = math.cos(angle)
+        p = pp.copy()
+        # translate point back to origin:
+        p[0] -= cx
+        p[1] -= cy
+
+        # rotate point
+        xnew = p[0] * c - p[1] * s
+        ynew = p[0] * s + p[1] * c
+
+        p[0] = xnew + cx
+        p[1] = ynew + cy
+        return p
+
+    def get_all_cone(self):
+        b_l = lambda n: self.client.simGetObjectPose(n).position.to_numpy_array()[0:2]
+        self.cones_left = np.array(list(map(b_l, self.client.simListSceneObjects('FloatingActor_($|[^a-zA-Z]+)'))))
+        self.cones_right = np.array(
+            list(map(b_l, self.client.simListSceneObjects('FloatingActorYellow_($|[^a-zA-Z]+)'))))
+
+    def get_cone(self, R):
+        cones_left_in = []
+        cones_right_in = []
+        pos_a = self.client.simGetVehiclePose().position.to_numpy_array()[0:2]
+        cones_left_in = self.cones_left[np.where(np.linalg.norm(self.cones_left - pos_a, axis=1) < R)]
+        cones_right_in = self.cones_right[np.where(np.linalg.norm(self.cones_right - pos_a, axis=1) < R)]
+        return np.array(cones_left_in), np.array(cones_right_in)
+
+    def optimization_cloth(self,c_l, c_r):
+        kA = 1/(self.a/np.tan(self.steering_0) - self.b)
+        def near_fine(d):
+            return 1 / d ** self.Lmin  # 1/np.exp(-d*d/5.5*2)
+
+        def near_unfine(d):
+            return d ** (2 * self.Lmin)
+
+        def d(cc_, kB):
+            coef = np.sqrt(2 * self.c_lenght / (np.abs(kB - kA))) * np.sqrt(np.pi / 2)
+            coef_up = np.sqrt(np.abs(kB - kA) / (2 * self.c_lenght)) * np.sqrt(2 / np.pi)
+            fresnel = lambda s: coef * np.array(special.fresnel(coef_up * s))
+            sA = self.c_lenght*kA/(kB-kA)
+            sB = self.c_lenght*kB/(kB-kA)
+            obj = lambda s: (cc_[0] - fresnel(s)[1]) ** 2 + (cc_[1] - np.sign(kB) * fresnel(s)[0]) ** 2
+            result = optimize.minimize_scalar(obj, [0], bounds=(sA, sB), method='bounded')
+            #  method ='Nelder-mead',options={'xatol':10**(-4),'initial_simplex':np.array([[0],[sB]])})
+            return np.sqrt(result.fun)
+
+        def distance_clothoida(c_l, c_r, kB):
+            f = 0
+            if kB > 0:
+                for cc_ in c_l:
+                    d1 = d(cc_, kB)
+                    f += near_unfine(d1)
+                    f += near_fine(d1)
+                for cc_ in c_r:
+                    d2 = d(cc_, kB)
+                    f += near_unfine(d2)
+                    f += near_fine(d2)
+            else:
+                for cc_ in c_l:
+                    d1 = d(cc_, kB)
+                    f += near_unfine(d1)
+                    f += near_fine(d1)
+                for cc_ in c_r:
+                    d2 = d(cc_, kB)
+                    f += near_unfine(d2)
+                    f += near_fine(d2)
+            return f
+
+        v_clothoida = lambda kB: distance_clothoida(c_l, c_r, kB)
+        result = optimize.minimize_scalar(v_clothoida, [0], bounds=(-0.2, 0.2), method='bounded')
+        return result.x,kA
+    def Control_cloth(self):
+        pos_a = self.client.simGetVehiclePose().position.to_numpy_array()[0:2]
+        orientation = self.client.getCarState().kinematics_estimated.orientation
+        pitch, roll, yaw = airsim.to_eularian_angles(orientation)
+        cones_right_in, cones_left_in = self.get_cone(self.lidar_R)
+        cones_left_in = cones_left_in - pos_a
+        cones_right_in = cones_right_in - pos_a
+        angle = -yaw
+        if not self.is_drive:
+            cones_left_in_rot = np.array([self.rotate_point(0, 0, angle, point) for point in cones_left_in])
+            cones_right_in_rot = np.array([self.rotate_point(0, 0, angle, point) for point in cones_right_in])
+            c_l = cones_left_in_rot.copy()
+            c_r = cones_right_in_rot.copy()
+            ind_l = np.where(c_l[:, 0] > 0)
+            ind_r = np.where(c_r[:, 0] > 0)
+            c_l = c_l[ind_l]
+            c_r = c_r[ind_r]
+            c_ = np.concatenate([c_l, c_r], axis=0)
+            self.c_kB, self.c_kA = self.optimization_cloth(c_l, c_r)
+            print(f"Оптимальная клотоида найдена!")
+            # Плавные радиусы поворотов
+            ss = np.linspace(0,self.c_lenght,30)
+            self.opt_radius =self.c_lenght / ((self.c_kB - self.c_kA)*ss)
+            self.is_drive = True
+
+        if self.i>28:
+            self.is_drive = False
+            self.i = 0
+        r = self.opt_radius[int(self.i)]
+        self.i = self.i + 1
+        if self.c_kB > 0:
+
+            s = self.steering_func_p(r)
+            print("+")
+        else:
+            s = self.steering_func_n(r)
+            print("-")
+        # if r>80:
+        #    s  = 0
+        print(f"Оптимальный радиус поворота {r}")
+        print(f"Оптимальный угол поворота в AirSim {s}")
+        return s,self.c_kB,self.c_kA,self.c_lenght
 class SimpleDriver:
     def __init__(self):
         self.pinholeCamera = None
